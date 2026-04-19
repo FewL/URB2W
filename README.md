@@ -21,3 +21,5 @@ npm run smoke
 ## 预期 Pages 地址
 
 `https://fewl.github.io/URB2W/`
+
+如仓库尚未启用 Pages，请在仓库设置里将 Pages Source 指向 `gh-pages` 分支的 `/ (root)`。
