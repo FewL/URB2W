@@ -1,6 +1,6 @@
 import * as Phaser from "phaser";
 import { BattleEngine } from "../core/battleEngine";
-import type { CardDefinition, CombatantState, EngineState } from "../core/types";
+import type { ActionBeat, CardDefinition, CombatantState, EngineState } from "../core/types";
 import { CARD_LIBRARY, CARD_TYPES, ENCOUNTERS, KEYWORD_LABELS, STATUS_META } from "../data/gameData";
 
 type DeltaSnapshot = {
@@ -9,6 +9,7 @@ type DeltaSnapshot = {
   playerTilt: number;
   enemyTilt: number;
   opinion: number;
+  actionCount: number;
   phase: string;
   logId: string | null;
 };
@@ -670,6 +671,7 @@ export class BattleScene extends Phaser.Scene {
       playerTilt: battle.player.tilt,
       enemyTilt: battle.enemy.tilt,
       opinion: battle.opinion,
+      actionCount: state.actionQueue.length,
       phase: state.phase,
       logId: state.log[0]?.id ?? null,
     };
@@ -714,6 +716,229 @@ export class BattleScene extends Phaser.Scene {
     if (battle.opinion !== before.opinion) {
       const diff = battle.opinion - before.opinion;
       spawnFloat(520, 334, `${diff > 0 ? "+" : ""}${diff} 舆论`, diff > 0 ? "#79ddff" : "#ff9d86");
+    }
+
+    state.actionQueue.slice(before.actionCount).forEach((beat, index) => {
+      this.showActionBeat(beat, index * 180);
+    });
+  }
+
+  private showActionBeat(beat: ActionBeat, delay: number): void {
+    const tone = this.actionTone(beat);
+    const targetX = beat.side === "player" ? 390 : 1050;
+    const targetY = beat.side === "player" ? 524 : 188;
+    const drift = beat.side === "player" ? 48 : -48;
+    const startX = beat.side === "player" ? -420 : 1860;
+
+    const flash = this.add
+      .rectangle(720, 450, 1440, 900, tone.flash, 0)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    this.overlayLayer.add(flash);
+
+    const container = this.add.container(startX, targetY);
+    container.setAlpha(0);
+    container.setScale(0.96);
+
+    const glow = this.add.ellipse(0, 0, 620, 176, tone.glow, 0.18);
+    const plate = this.add
+      .rectangle(0, 0, 572, 138, tone.fill, 0.96)
+      .setStrokeStyle(3, tone.stroke, 0.92);
+    const rail = this.add.rectangle(beat.side === "player" ? -270 : 270, 0, 16, 138, tone.stroke, 1);
+    const accent = this.add.rectangle(beat.side === "player" ? -220 : 220, -42, 120, 8, tone.stroke, 0.95);
+
+    const overline = this.add.text(-246, -50, this.actionBeatLabel(beat), {
+      fontFamily: "Chivo, sans-serif",
+      fontSize: "16px",
+      fontStyle: "700",
+      color: tone.overline,
+      letterSpacing: 1,
+    });
+    const cardName = this.add.text(-246, -22, `【${beat.cardName}】`, {
+      fontFamily: "Chivo, sans-serif",
+      fontSize: "27px",
+      fontStyle: "700",
+      color: "#fff6ef",
+    });
+    const headline = this.add.text(-246, 12, beat.headline, {
+      fontFamily: "Chivo, sans-serif",
+      fontSize: "31px",
+      fontStyle: "900",
+      color: "#fff7f2",
+      wordWrap: { width: 460 },
+    });
+    const kicker = this.add.text(-246, 56, beat.kicker, {
+      fontFamily: "Space Grotesk, sans-serif",
+      fontSize: "17px",
+      color: "#eaded6",
+      wordWrap: { width: 468 },
+      lineSpacing: 4,
+    });
+
+    container.add([glow, plate, rail, accent, overline, cardName, headline, kicker]);
+    this.overlayLayer.add(container);
+
+    beat.shards.forEach((shard, index) => {
+      const shardNode = this.add
+        .text(targetX + (beat.side === "player" ? 60 : -60), targetY - 42 + index * 26, shard, {
+          fontFamily: "Chivo, sans-serif",
+          fontSize: "18px",
+          fontStyle: "700",
+          color: tone.shard,
+          backgroundColor: tone.shardBg,
+          padding: { left: 10, right: 10, top: 4, bottom: 4 },
+        })
+        .setOrigin(0.5)
+        .setAlpha(0);
+      this.overlayLayer.add(shardNode);
+      this.tweens.add({
+        targets: shardNode,
+        alpha: 1,
+        x: targetX + (beat.side === "player" ? 170 + index * 26 : -170 - index * 26),
+        y: targetY - 80 + index * 22,
+        delay: delay + 110 + index * 42,
+        duration: 180,
+        ease: "Cubic.easeOut",
+      });
+      this.tweens.add({
+        targets: shardNode,
+        alpha: 0,
+        y: shardNode.y - 28,
+        delay: delay + 430 + index * 42,
+        duration: 240,
+        ease: "Cubic.easeOut",
+        onComplete: () => shardNode.destroy(),
+      });
+    });
+
+    this.tweens.add({
+      targets: flash,
+      alpha: 0.15,
+      delay,
+      duration: 90,
+      yoyo: true,
+      hold: 50,
+      onComplete: () => flash.destroy(),
+    });
+
+    this.tweens.add({
+      targets: container,
+      x: targetX,
+      alpha: 1,
+      scaleX: 1,
+      scaleY: 1,
+      delay,
+      duration: 220,
+      ease: "Cubic.easeOut",
+    });
+
+    this.tweens.add({
+      targets: container,
+      x: targetX + drift,
+      alpha: 0,
+      delay: delay + 720,
+      duration: 260,
+      ease: "Cubic.easeIn",
+      onComplete: () => container.destroy(),
+    });
+
+    if (beat.cardType === "Finisher") {
+      this.time.delayedCall(delay, () => {
+        this.cameras.main.shake(180, 0.0046);
+      });
+    } else if (beat.mode === "response" || beat.cardType === "Counter") {
+      this.time.delayedCall(delay, () => {
+        this.cameras.main.shake(90, 0.0024);
+      });
+    }
+  }
+
+  private actionBeatLabel(beat: ActionBeat): string {
+    if (beat.mode === "response") {
+      return beat.side === "player" ? "PLAYER RESPONSE" : "ENEMY RESPONSE";
+    }
+    return beat.side === "player" ? "PLAYER PLAY" : "ENEMY PLAY";
+  }
+
+  private actionTone(beat: ActionBeat): {
+    fill: number;
+    stroke: number;
+    glow: number;
+    flash: number;
+    overline: string;
+    shard: string;
+    shardBg: string;
+  } {
+    switch (beat.cardType) {
+      case "Thesis":
+        return {
+          fill: 0x3b281d,
+          stroke: 0xffbe78,
+          glow: 0xffb15a,
+          flash: 0xffb15a,
+          overline: "#ffd8ad",
+          shard: "#29140c",
+          shardBg: "#ffcf9f",
+        };
+      case "Argument":
+        return {
+          fill: 0x163243,
+          stroke: 0x77d6ff,
+          glow: 0x51c5ff,
+          flash: 0x3d9fd3,
+          overline: "#b5eaff",
+          shard: "#0d1c28",
+          shardBg: "#b7ecff",
+        };
+      case "Counter":
+        return {
+          fill: 0x2f2040,
+          stroke: 0xd4a4ff,
+          glow: 0xaa6df0,
+          flash: 0x9d5ce4,
+          overline: "#edd5ff",
+          shard: "#1d102b",
+          shardBg: "#e4c8ff",
+        };
+      case "Label":
+        return {
+          fill: 0x451d28,
+          stroke: 0xff8f8f,
+          glow: 0xff6d6d,
+          flash: 0xd35656,
+          overline: "#ffd3d0",
+          shard: "#2f0e16",
+          shardBg: "#ffc3bd",
+        };
+      case "Redirect":
+        return {
+          fill: 0x183631,
+          stroke: 0x86f2de,
+          glow: 0x48d7be,
+          flash: 0x3ab39f,
+          overline: "#cdfcf2",
+          shard: "#0c221f",
+          shardBg: "#c0f9ed",
+        };
+      case "Finisher":
+        return {
+          fill: 0x433218,
+          stroke: 0xffd55e,
+          glow: 0xffc648,
+          flash: 0xe6a93d,
+          overline: "#fff0ba",
+          shard: "#25170a",
+          shardBg: "#ffe5a0",
+        };
+      default:
+        return {
+          fill: 0x29232d,
+          stroke: 0xffffff,
+          glow: 0xffffff,
+          flash: 0xffffff,
+          overline: "#fff6ef",
+          shard: "#201717",
+          shardBg: "#fff1e6",
+        };
     }
   }
 

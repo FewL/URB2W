@@ -9,7 +9,9 @@ import {
   REWARD_POOL,
   STATUS_META,
 } from "../data/gameData";
+import { buildActionBeat } from "../data/actionCallouts";
 import type {
+  ActionBeat,
   BattleState,
   CardDefinition,
   CardInstance,
@@ -50,6 +52,7 @@ const mulberry32 = (seed: number): (() => number) => {
 export class BattleEngine {
   private uidCounter = 1;
   private logCounter = 1;
+  private beatCounter = 1;
   private rng: () => number = Math.random;
   private state: EngineState;
 
@@ -68,6 +71,7 @@ export class BattleEngine {
     this.rng = mulberry32(seedFactory());
     this.uidCounter = 1;
     this.logCounter = 1;
+    this.beatCounter = 1;
     this.state = this.buildInitialState(seedText);
     this.startBattle(0);
   }
@@ -79,6 +83,7 @@ export class BattleEngine {
       demoNotes: DEMO_NOTES,
       rewardOptions: [],
       log: [],
+      actionQueue: [],
       run: {
         encounterIndex: 0,
         playerDeckIds: [...PLAYER_STARTER_DECK],
@@ -351,6 +356,7 @@ export class BattleEngine {
       if (!pending) {
         return false;
       }
+      this.pushActionBeat(actor.side, definition, "response");
       this.log(`${actor.name}回应【${definition.name}】。`);
       this.applyResponseCard(definition, actor, pending);
       this.state.phase = pending.actorSide === "enemy" ? "enemy-turn" : "player-turn";
@@ -361,6 +367,7 @@ export class BattleEngine {
     const target = this.getOpponent(side);
     const pendingAction = this.createPendingAction(actor, target, definition);
     this.battle().pendingAction = pendingAction;
+    this.pushActionBeat(actor.side, definition, "normal");
     this.log(`${actor.name}打出【${definition.name}】。`);
 
     if (side === "player") {
@@ -411,6 +418,17 @@ export class BattleEngine {
     }
     actor.nextCardOpinionBonus = 0;
     return pending;
+  }
+
+  private pushActionBeat(side: Side, definition: CardDefinition, mode: "normal" | "response"): void {
+    const beat: ActionBeat = buildActionBeat({
+      id: `beat-${this.beatCounter++}`,
+      side,
+      mode,
+      card: definition,
+      rng: this.rng,
+    });
+    this.state.actionQueue.push(beat);
   }
 
   private cardHasBonusPotential(definition: CardDefinition): boolean {

@@ -128,6 +128,18 @@ export interface PendingAction {
   injectedOpinionBonus: number;
 }
 
+export interface ActionBeat {
+  id: string;
+  side: Side;
+  mode: CardContext;
+  cardId: string;
+  cardName: string;
+  cardType: CardType;
+  headline: string;
+  kicker: string;
+  shards: string[];
+}
+
 export interface RunState {
   encounterIndex: number;
   playerDeckIds: string[];
@@ -159,6 +171,7 @@ export interface EngineState {
   demoNotes: string[];
   rewardOptions: string[];
   log: LogEntry[];
+  actionQueue: ActionBeat[];
   run: RunState;
   battle: BattleState | null;
 }
