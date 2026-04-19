@@ -1,149 +1,17 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>赢了么 Whitebox Demo</title>
+    <title>赢了么 | Browser Card Battle</title>
     <meta
       name="description"
-      content="《赢了么》v0.1 白盒浏览器 Demo。围绕体面、气势、舆论、破防展开的回合制嘴炮战斗。"
+      content="《赢了么》正式网页游戏原型。Phaser 驱动的单机卡牌战斗，围绕体面、气势、舆论、破防展开。"
     />
-    <link rel="stylesheet" href="./styles.css" />
+    <script type="module" crossorigin src="/URB2W/assets/index-CyV9AIck.js"></script>
+    <link rel="stylesheet" crossorigin href="/URB2W/assets/index-Cm_29uHb.css">
   </head>
   <body>
-    <div class="page-shell">
-      <header class="hero">
-        <div>
-          <p class="hero-kicker">WINNING STUDIES / WHITEBOX / V0.1</p>
-          <h1>赢了么</h1>
-          <p class="hero-copy">
-            用体面、气势、舆论、破防打完一整条评论战线。当前版本是可玩的静态白盒，
-            重点验证轻响应、状态压制和终结条件是否成立。
-          </p>
-        </div>
-        <div class="hero-actions">
-          <button id="new-run-btn" class="primary-button">新开一局</button>
-          <div class="hero-note">
-            <span>Demo 规则补丁</span>
-            <p>为保证【回应】可用，防守方在对手回合获得 1 点临时“应对气势”。</p>
-          </div>
-        </div>
-      </header>
-
-      <main class="layout">
-        <section class="board">
-          <div class="topline">
-            <div class="status-chip" id="phase-chip">初始化中</div>
-            <div class="status-chip" id="battlefield-chip">场地</div>
-            <div class="status-chip" id="encounter-chip">对手</div>
-          </div>
-
-          <section class="combatant enemy-panel" id="enemy-panel"></section>
-
-          <section class="center-lane">
-            <div class="opinion-panel">
-              <div>
-                <p class="panel-label">舆论</p>
-                <div id="opinion-value" class="resource-big">0</div>
-              </div>
-              <div id="opinion-track" class="opinion-track" aria-label="舆论条"></div>
-            </div>
-
-            <div class="battle-log-panel">
-              <div class="panel-head">
-                <p class="panel-label">战报</p>
-                <button id="end-turn-btn" class="secondary-button">结束回合</button>
-              </div>
-              <div id="battle-log" class="battle-log"></div>
-            </div>
-          </section>
-
-          <section class="combatant player-panel" id="player-panel"></section>
-
-          <section class="hand-panel">
-            <div class="panel-head">
-              <p class="panel-label">手牌</p>
-              <p id="hand-note" class="panel-subtitle">你的出牌阶段</p>
-            </div>
-            <div id="hand" class="card-grid"></div>
-          </section>
-        </section>
-
-        <aside class="sidebar">
-          <section class="sidebar-card">
-            <div class="panel-head">
-              <p class="panel-label">路线</p>
-              <p id="seed-note" class="panel-subtitle">Seed</p>
-            </div>
-            <div id="run-path" class="path-list"></div>
-          </section>
-
-          <section class="sidebar-card">
-            <div class="panel-head">
-              <p class="panel-label">牌库快照</p>
-              <p id="deck-note" class="panel-subtitle"></p>
-            </div>
-            <div id="deck-preview" class="deck-preview"></div>
-          </section>
-
-          <section class="sidebar-card">
-            <p class="panel-label">战场规则</p>
-            <div id="rules-panel" class="rules-list"></div>
-          </section>
-
-          <section class="sidebar-card reward-card hidden" id="reward-panel">
-            <div class="panel-head">
-              <p class="panel-label">战后加卡</p>
-              <p class="panel-subtitle">赢了就得继续抬强度</p>
-            </div>
-            <div id="reward-options" class="reward-options"></div>
-          </section>
-        </aside>
-      </main>
-    </div>
-
-    <template id="combatant-template">
-      <div class="combatant-card">
-        <div class="panel-head combatant-head">
-          <div>
-            <h2 class="combatant-name"></h2>
-            <p class="combatant-role"></p>
-          </div>
-          <div class="combatant-meta">
-            <span class="pill face-pill"></span>
-            <span class="pill momentum-pill"></span>
-          </div>
-        </div>
-
-        <div class="resource-row">
-          <div class="resource-box">
-            <span class="resource-label">体面</span>
-            <strong class="face-value"></strong>
-          </div>
-          <div class="resource-box">
-            <span class="resource-label">气势</span>
-            <strong class="momentum-value"></strong>
-          </div>
-          <div class="resource-box">
-            <span class="resource-label">破防</span>
-            <strong class="tilt-value"></strong>
-          </div>
-          <div class="resource-box">
-            <span class="resource-label">格挡</span>
-            <strong class="block-value"></strong>
-          </div>
-        </div>
-
-        <div class="deck-row">
-          <span class="pill draw-pile"></span>
-          <span class="pill discard-pile"></span>
-          <span class="pill response-pool"></span>
-        </div>
-
-        <div class="status-strip"></div>
-      </div>
-    </template>
-
-    <script type="module" src="./js/main.mjs"></script>
+    <div id="app"></div>
   </body>
 </html>
