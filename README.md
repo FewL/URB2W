@@ -1,25 +1,38 @@
-# 赢了么 Whitebox Demo
+# 赢了么
 
-基于 `服了么.md` 落地的浏览器白盒战斗 Demo。
+基于 `服了么.md` 落地的正式网页游戏原型，不再是静态演示页。
 
-## 当前交付
+## 技术栈
 
-- 纯静态 GitHub Pages 站点
+- `Phaser 4`
+- `TypeScript`
+- `Vite`
+- `GitHub Pages`
+
+## 当前内容
+
+- 标题场景 + 战斗场景
 - 四资源战斗：体面 / 气势 / 舆论 / 破防
 - 40 张测试牌
 - 轻响应系统
 - 3 个普通敌人 + 1 个 Boss
 - 2 个场地
-- 战后加卡与连续战斗闭环
+- 战后加卡与整条 run 闭环
 
-## 本地验证
+## 本地运行
 
 ```bash
+npm install
+npm run dev
+```
+
+## 验证
+
+```bash
+npm run build
 npm run smoke
 ```
 
-## 预期 Pages 地址
+## 在线地址
 
 `https://fewl.github.io/URB2W/`
-
-如仓库尚未启用 Pages，请在仓库设置里将 Pages Source 指向 `gh-pages` 分支的 `/ (root)`。

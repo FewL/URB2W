@@ -8,62 +8,73 @@ import {
   POSITIVE_STATUS_POOL,
   REWARD_POOL,
   STATUS_META,
-} from "./data.mjs";
+} from "../data/gameData";
+import type {
+  BattleState,
+  CardDefinition,
+  CardInstance,
+  CardType,
+  CombatantState,
+  EngineState,
+  PendingAction,
+  Side,
+  StatusId,
+} from "./types";
 
-function hashSeed(input) {
-  const text = String(input);
-  let hash = 1779033703 ^ text.length;
-  for (let index = 0; index < text.length; index += 1) {
-    hash = Math.imul(hash ^ text.charCodeAt(index), 3432918353);
+const clamp = (value: number, min: number, max: number): number =>
+  Math.min(max, Math.max(min, value));
+
+const hashSeed = (input: string): (() => number) => {
+  let hash = 1779033703 ^ input.length;
+  for (let index = 0; index < input.length; index += 1) {
+    hash = Math.imul(hash ^ input.charCodeAt(index), 3432918353);
     hash = (hash << 13) | (hash >>> 19);
   }
+
   return () => {
     hash = Math.imul(hash ^ (hash >>> 16), 2246822507);
     hash = Math.imul(hash ^ (hash >>> 13), 3266489909);
     return (hash ^= hash >>> 16) >>> 0;
   };
-}
+};
 
-function mulberry32(seed) {
-  return function rng() {
+const mulberry32 = (seed: number): (() => number) => {
+  return () => {
     let value = (seed += 0x6d2b79f5);
     value = Math.imul(value ^ (value >>> 15), value | 1);
     value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
     return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
   };
-}
+};
 
-function clamp(value, min, max) {
-  return Math.min(max, Math.max(min, value));
-}
+export class BattleEngine {
+  private uidCounter = 1;
+  private logCounter = 1;
+  private rng: () => number = Math.random;
+  private state: EngineState;
 
-function sample(rng, items) {
-  return items[Math.floor(rng() * items.length)];
-}
-
-function sampleMany(rng, items, count) {
-  const pool = [...items];
-  const result = [];
-  while (pool.length > 0 && result.length < count) {
-    const index = Math.floor(rng() * pool.length);
-    result.push(pool.splice(index, 1)[0]);
-  }
-  return result;
-}
-
-export class WinGame {
-  constructor(seed = Date.now()) {
+  constructor(seed = Date.now().toString()) {
+    this.state = this.buildInitialState(seed);
     this.reset(seed);
   }
 
-  reset(seed = Date.now()) {
+  getSnapshot(): EngineState {
+    return this.state;
+  }
+
+  reset(seed = Date.now().toString()): void {
     const seedText = String(seed);
     const seedFactory = hashSeed(seedText);
-    this.seed = seedText;
     this.rng = mulberry32(seedFactory());
     this.uidCounter = 1;
-    this.state = {
-      seed: seedText,
+    this.logCounter = 1;
+    this.state = this.buildInitialState(seedText);
+    this.startBattle(0);
+  }
+
+  private buildInitialState(seed: string): EngineState {
+    return {
+      seed,
       phase: "booting",
       demoNotes: DEMO_NOTES,
       rewardOptions: [],
@@ -77,14 +88,9 @@ export class WinGame {
       },
       battle: null,
     };
-    this.startBattle(0);
   }
 
-  getState() {
-    return this.state;
-  }
-
-  startBattle(encounterIndex) {
+  private startBattle(encounterIndex: number): void {
     const encounter = ENCOUNTERS[encounterIndex];
     const battlefield = BATTLEFIELDS[encounter.battlefieldId];
 
@@ -92,7 +98,8 @@ export class WinGame {
       side: "player",
       name: "赢学大师",
       role: "逆风成名",
-      passive: "体面 ≤10 时，回合开始额外获得 1 气势；每场战斗首次失态仅损失 1 点舆论。",
+      passive:
+        "体面 ≤10 时回合开始额外获得 1 气势；每场战斗首次失态仅损失 1 点舆论。",
       face: this.state.run.playerFace,
       maxFace: this.state.run.maxFace,
       deckIds: this.state.run.playerDeckIds,
@@ -128,23 +135,31 @@ export class WinGame {
     this.state.log = [];
     this.log(`${battlefield.name}开战，对手是${encounter.name}。`);
     this.log(`敌方特征：${encounter.passive}`);
-    this.prepareTurn("player", { opening: true });
+    this.prepareTurn("player", true);
   }
 
-  createCombatant({ side, name, role, passive, face, maxFace, deckIds }) {
+  private createCombatant(input: {
+    side: Side;
+    name: string;
+    role: string;
+    passive: string;
+    face: number;
+    maxFace: number;
+    deckIds: string[];
+  }): CombatantState {
     return {
-      side,
-      name,
-      role,
-      passive,
-      maxFace,
-      face,
+      side: input.side,
+      name: input.name,
+      role: input.role,
+      passive: input.passive,
+      maxFace: input.maxFace,
+      face: input.face,
       baseMomentum: 3,
       momentum: 0,
       tilt: 0,
       maxTilt: 10,
       block: 0,
-      drawPile: deckIds.map((cardId) => this.createCardInstance(cardId)),
+      drawPile: input.deckIds.map((cardId) => this.createCardInstance(cardId)),
       hand: [],
       discard: [],
       statuses: {},
@@ -156,20 +171,34 @@ export class WinGame {
       tookTiltThisTurn: false,
       nextArgumentToOpinion: false,
       nextCardOpinionBonus: 0,
-      firstComposureShieldAvailable: side === "player",
+      firstComposureShieldAvailable: input.side === "player",
     };
   }
 
-  createCardInstance(cardId) {
-    const definition = CARD_LIBRARY[cardId];
+  private createCardInstance(cardId: string): CardInstance {
     return {
       uid: `${cardId}-${this.uidCounter++}`,
-      cardId: definition.id,
+      cardId,
     };
   }
 
-  prepareTurn(side, { opening = false } = {}) {
-    const battle = this.state.battle;
+  private battle(): BattleState {
+    if (!this.state.battle) {
+      throw new Error("Battle state is not initialized.");
+    }
+    return this.state.battle;
+  }
+
+  private getCombatant(side: Side): CombatantState {
+    return this.battle()[side];
+  }
+
+  private getOpponent(side: Side): CombatantState {
+    return this.battle()[side === "player" ? "enemy" : "player"];
+  }
+
+  private prepareTurn(side: Side, opening = false): void {
+    const battle = this.battle();
     battle.activeSide = side;
     if (!opening) {
       battle.turnNumber += 1;
@@ -181,20 +210,18 @@ export class WinGame {
     actor.lastCardType = null;
     actor.playedTypeCounts = {};
     actor.tookTiltThisTurn = false;
-    defender.tookTiltThisTurn = false;
     actor.block = 0;
-    actor.momentum =
-      actor.baseMomentum +
-      (actor.side === "player" && actor.face <= 10 ? 1 : 0);
+    actor.momentum = actor.baseMomentum + (actor.side === "player" && actor.face <= 10 ? 1 : 0);
     actor.responseCharge = 0;
     actor.responseUsed = false;
     defender.responseCharge = 1;
     defender.responseUsed = false;
+    defender.tookTiltThisTurn = false;
     battle.pendingAction = null;
 
     if (!opening) {
-      const bonusDraws = battle.battlefield.id === "group-chat" ? 1 : 0;
-      this.drawCards(actor, 2 + bonusDraws);
+      const bonusDraw = battle.battlefield.id === "group-chat" ? 1 : 0;
+      this.drawCards(actor, 2 + bonusDraw);
     }
 
     const sideLabel = side === "player" ? "你的" : `${actor.name}的`;
@@ -202,15 +229,7 @@ export class WinGame {
     this.state.phase = side === "player" ? "player-turn" : "enemy-turn";
   }
 
-  getCombatant(side) {
-    return this.state.battle[side];
-  }
-
-  getOpponent(side) {
-    return this.state.battle[side === "player" ? "enemy" : "player"];
-  }
-
-  drawCards(character, count) {
+  private drawCards(character: CombatantState, count: number): void {
     for (let drawIndex = 0; drawIndex < count; drawIndex += 1) {
       if (character.drawPile.length === 0) {
         if (character.discard.length === 0) {
@@ -219,21 +238,22 @@ export class WinGame {
         character.drawPile = character.discard.splice(0);
         this.shuffleInPlace(character.drawPile);
       }
-      const card = character.drawPile.pop();
-      if (card) {
-        character.hand.push(card);
+
+      const drawnCard = character.drawPile.pop();
+      if (drawnCard) {
+        character.hand.push(drawnCard);
       }
     }
   }
 
-  shuffleInPlace(list) {
-    for (let index = list.length - 1; index > 0; index -= 1) {
+  private shuffleInPlace<T>(items: T[]): void {
+    for (let index = items.length - 1; index > 0; index -= 1) {
       const swapIndex = Math.floor(this.rng() * (index + 1));
-      [list[index], list[swapIndex]] = [list[swapIndex], list[index]];
+      [items[index], items[swapIndex]] = [items[swapIndex], items[index]];
     }
   }
 
-  endPlayerTurn() {
+  endPlayerTurn(): boolean {
     if (this.state.phase !== "player-turn") {
       return false;
     }
@@ -241,7 +261,17 @@ export class WinGame {
     return true;
   }
 
-  finishTurn(side) {
+  skipResponse(): boolean {
+    if (this.state.phase !== "response-window") {
+      return false;
+    }
+    this.log("你选择先不接这波。");
+    this.state.phase = "enemy-turn";
+    this.resolvePendingAction();
+    return true;
+  }
+
+  private finishTurn(side: Side): void {
     const actor = this.getCombatant(side);
     this.restoreLastWordIfNeeded();
     if (this.resolveBattleOutcome()) {
@@ -256,23 +286,23 @@ export class WinGame {
 
     if (side === "player") {
       this.prepareTurn("enemy");
-    } else {
-      this.prepareTurn("player");
+      return;
     }
+    this.prepareTurn("player");
   }
 
-  tickStatuses(character) {
-    const nextStatuses = {};
+  private tickStatuses(character: CombatantState): void {
+    const nextStatuses: CombatantState["statuses"] = {};
     Object.entries(character.statuses).forEach(([statusId, duration]) => {
-      if (duration > 1) {
-        nextStatuses[statusId] = duration - 1;
+      if ((duration ?? 0) > 1) {
+        nextStatuses[statusId as StatusId] = (duration ?? 0) - 1;
       }
     });
     character.statuses = nextStatuses;
   }
 
-  restoreLastWordIfNeeded() {
-    ["player", "enemy"].forEach((side) => {
+  private restoreLastWordIfNeeded(): void {
+    (["player", "enemy"] as Side[]).forEach((side) => {
       const target = this.getCombatant(side);
       if (target.face <= 0 && this.hasStatus(target, "lastWord")) {
         target.face = 1;
@@ -282,26 +312,28 @@ export class WinGame {
     });
   }
 
-  playerPlayCard(cardUid) {
+  playPlayerCard(cardUid: string): boolean {
     if (this.state.phase !== "player-turn") {
       return false;
     }
     return this.playCard("player", cardUid);
   }
 
-  playCard(side, cardUid, forcedMode = null) {
+  playCard(side: Side, cardUid: string, forcedMode: "normal" | "response" | null = null): boolean {
     const actor = this.getCombatant(side);
-    const mode = forcedMode || (this.state.phase === "response-window" ? "response" : "normal");
+    const mode = forcedMode ?? (this.state.phase === "response-window" ? "response" : "normal");
     const instance = actor.hand.find((card) => card.uid === cardUid);
+
     if (!instance) {
       return false;
     }
+
     const definition = CARD_LIBRARY[instance.cardId];
     if (!this.isCardPlayable(actor, definition, mode)) {
       return false;
     }
 
-    const cost = this.getCardCost(actor, definition);
+    const cost = this.getCardCost(definition);
     if (mode === "response") {
       actor.responseCharge -= cost;
       actor.responseUsed = true;
@@ -314,13 +346,11 @@ export class WinGame {
     actor.hand = actor.hand.filter((card) => card.uid !== cardUid);
     actor.discard.push(instance);
 
-    const target = mode === "response" ? null : this.getOpponent(side);
-    const pending =
-      mode === "response"
-        ? this.state.battle.pendingAction
-        : this.createPendingAction(actor, target, definition);
-
     if (mode === "response") {
+      const pending = this.battle().pendingAction;
+      if (!pending) {
+        return false;
+      }
       this.log(`${actor.name}回应【${definition.name}】。`);
       this.applyResponseCard(definition, actor, pending);
       this.state.phase = pending.actorSide === "enemy" ? "enemy-turn" : "player-turn";
@@ -328,16 +358,18 @@ export class WinGame {
       return true;
     }
 
+    const target = this.getOpponent(side);
+    const pendingAction = this.createPendingAction(actor, target, definition);
+    this.battle().pendingAction = pendingAction;
     this.log(`${actor.name}打出【${definition.name}】。`);
-    this.state.battle.pendingAction = pending;
 
     if (side === "player") {
-      const enemyResponse = this.chooseEnemyResponse(pending);
+      const enemyResponse = this.chooseEnemyResponse(pendingAction);
       if (enemyResponse) {
         this.playCard("enemy", enemyResponse.uid, "response");
-        return true;
+      } else {
+        this.resolvePendingAction();
       }
-      this.resolvePendingAction();
       return true;
     }
 
@@ -350,12 +382,16 @@ export class WinGame {
     return true;
   }
 
-  createPendingAction(actor, target, card) {
-    const pending = {
+  private createPendingAction(
+    actor: CombatantState,
+    target: CombatantState,
+    definition: CardDefinition,
+  ): PendingAction {
+    const pending: PendingAction = {
       actorSide: actor.side,
       targetSide: target.side,
-      cardId: card.id,
-      card,
+      cardId: definition.id,
+      card: definition,
       cancel: false,
       cancelBonus: false,
       reduceFaceDamageRemaining: 0,
@@ -364,12 +400,12 @@ export class WinGame {
       convertFaceToOpinionApplied: false,
       convertFaceToTilt: false,
       cancelRedirect: false,
-      bonusPotential: this.cardHasBonusPotential(card),
+      bonusPotential: this.cardHasBonusPotential(definition),
       convertArgumentToOpinion: false,
-      injectedOpinionBonus: actor.nextCardOpinionBonus || 0,
+      injectedOpinionBonus: actor.nextCardOpinionBonus,
     };
 
-    if (actor.nextArgumentToOpinion && card.type === "Argument") {
+    if (actor.nextArgumentToOpinion && definition.type === "Argument") {
       pending.convertArgumentToOpinion = true;
       actor.nextArgumentToOpinion = false;
     }
@@ -377,8 +413,8 @@ export class WinGame {
     return pending;
   }
 
-  cardHasBonusPotential(card) {
-    return card.effects.some((effect) =>
+  private cardHasBonusPotential(definition: CardDefinition): boolean {
+    return definition.effects.some((effect) =>
       [
         "opinionIfSelfHasStatus",
         "dealFaceIfTargetHasStatus",
@@ -389,33 +425,40 @@ export class WinGame {
         "dealFaceIfFaceAtMost",
         "dealFaceWithLostFaceBonus",
         "gainMomentumAndDrawIfFaceAtMost",
-      ].includes(effect.id),
+      ].includes(effect.kind),
     );
   }
 
-  registerCardPlay(actor, card) {
-    if (this.hasStatus(actor, "doubleStandard") && actor.lastCardType === card.type) {
+  private registerCardPlay(actor: CombatantState, definition: CardDefinition): void {
+    if (this.hasStatus(actor, "doubleStandard") && actor.lastCardType === definition.type) {
       this.shiftOpinionAgainst(actor, 1, `${actor.name}在【双标】下连续打出同类牌`);
     }
 
-    if (this.hasStatus(actor, "urgent") && ["Argument", "Finisher"].includes(card.type)) {
+    if (
+      this.hasStatus(actor, "urgent") &&
+      (definition.type === "Argument" || definition.type === "Finisher")
+    ) {
       this.adjustTilt(actor, 1, `${actor.name}在【急了】状态下情绪继续上头`);
     }
 
-    actor.lastCardType = card.type;
-    actor.playedTypeCounts[card.type] = (actor.playedTypeCounts[card.type] || 0) + 1;
+    actor.lastCardType = definition.type;
+    actor.playedTypeCounts[definition.type] = (actor.playedTypeCounts[definition.type] ?? 0) + 1;
   }
 
-  isCardPlayable(actor, card, mode) {
-    const cost = this.getCardCost(actor, card);
+  isCardPlayable(
+    actor: CombatantState,
+    definition: CardDefinition,
+    mode: "normal" | "response",
+  ): boolean {
+    const cost = this.getCardCost(definition);
     if (mode === "normal") {
-      if (card.context === "response") {
+      if (definition.context === "response") {
         return false;
       }
       return actor.momentum >= cost;
     }
 
-    if (card.context !== "response") {
+    if (definition.context !== "response") {
       return false;
     }
     if (this.hasStatus(actor, "speechless")) {
@@ -424,21 +467,21 @@ export class WinGame {
     if (actor.responseUsed || actor.responseCharge < cost) {
       return false;
     }
-    return this.isResponseRelevant(card, actor, this.state.battle.pendingAction);
+    return this.isResponseRelevant(definition, actor, this.battle().pendingAction);
   }
 
-  getCardCost(actor, card) {
-    let cost = card.cost;
+  getCardCost(definition: CardDefinition): number {
+    let cost = definition.cost;
     if (
-      this.state.battle.battlefield.id === "comment-zone" &&
-      card.keywords.includes("response")
+      this.battle().battlefield.id === "comment-zone" &&
+      definition.keywords.includes("response")
     ) {
       cost -= 1;
     }
     return Math.max(0, cost);
   }
 
-  getAvailableResponses(side) {
+  getAvailableResponses(side: Side): Array<CardInstance & { definition: CardDefinition }> {
     const actor = this.getCombatant(side);
     return actor.hand
       .map((instance) => ({
@@ -448,17 +491,22 @@ export class WinGame {
       .filter(({ definition }) => this.isCardPlayable(actor, definition, "response"));
   }
 
-  isResponseRelevant(card, actor, pending) {
+  private isResponseRelevant(
+    definition: CardDefinition,
+    actor: CombatantState,
+    pending: PendingAction | null,
+  ): boolean {
     if (!pending) {
       return false;
     }
     const actorOpinionBehind = this.relativeOpinion(pending.actorSide) < 0;
-    const actorPlayedThesis = (this.getCombatant(pending.actorSide).playedTypeCounts.Thesis || 0) > 0;
+    const actorPlayedThesis =
+      (this.getCombatant(pending.actorSide).playedTypeCounts.Thesis ?? 0) > 0;
     const targetsResponder = pending.targetSide === actor.side;
     const hasFaceDamage = this.pendingHasFaceDamage(pending.card);
     const hasRedirect = pending.card.keywords.includes("redirect");
 
-    switch (card.id) {
+    switch (definition.id) {
       case "ask-first":
         return pending.card.type === "Argument" && hasFaceDamage;
       case "whatabout":
@@ -480,13 +528,15 @@ export class WinGame {
     }
   }
 
-  chooseEnemyResponse(pending) {
-    const enemyOptions = this.getAvailableResponses("enemy");
-    if (enemyOptions.length === 0) {
+  private chooseEnemyResponse(
+    pending: PendingAction,
+  ): (CardInstance & { definition: CardDefinition }) | null {
+    const options = this.getAvailableResponses("enemy");
+    if (options.length === 0) {
       return null;
     }
 
-    const scored = enemyOptions
+    const scored = options
       .map((instance) => ({
         instance,
         score: this.scoreResponseCard(instance.definition, pending, "enemy"),
@@ -499,14 +549,18 @@ export class WinGame {
     return scored[0].instance;
   }
 
-  scoreResponseCard(card, pending, side) {
+  private scoreResponseCard(
+    definition: CardDefinition,
+    pending: PendingAction,
+    side: Side,
+  ): number {
     const targetsResponder = pending.targetSide === side;
     const hasFaceDamage = this.pendingHasFaceDamage(pending.card);
     const actorOpinionBehind = this.relativeOpinion(pending.actorSide) < 0;
     const actorPlayedThesis =
-      (this.getCombatant(pending.actorSide).playedTypeCounts.Thesis || 0) > 0;
+      (this.getCombatant(pending.actorSide).playedTypeCounts.Thesis ?? 0) > 0;
 
-    switch (card.id) {
+    switch (definition.id) {
       case "logic-leap":
         return pending.card.cost >= 3 ? 10 : 7;
       case "whatabout":
@@ -528,7 +582,7 @@ export class WinGame {
     }
   }
 
-  pendingHasFaceDamage(card) {
+  private pendingHasFaceDamage(card: CardDefinition): boolean {
     return card.effects.some((effect) =>
       [
         "dealFace",
@@ -539,15 +593,19 @@ export class WinGame {
         "dealFaceIfFaceAtMost",
         "dealFaceWithLostFaceBonus",
         "dealFaceByPositiveOpinion",
-      ].includes(effect.id),
+      ].includes(effect.kind),
     );
   }
 
-  applyResponseCard(card, actor, pending) {
-    card.effects.forEach((effect) => {
-      switch (effect.id) {
+  private applyResponseCard(
+    definition: CardDefinition,
+    actor: CombatantState,
+    pending: PendingAction,
+  ): void {
+    definition.effects.forEach((effect) => {
+      switch (effect.kind) {
         case "reducePendingFace":
-          pending.reduceFaceDamageRemaining += effect.value;
+          pending.reduceFaceDamageRemaining += effect.value ?? 0;
           break;
         case "cancelPendingBonus":
           pending.cancelBonus = true;
@@ -556,31 +614,31 @@ export class WinGame {
           pending.cancel = true;
           break;
         case "opinionIfPendingCostAtLeast":
-          if (pending.card.cost >= effect.threshold) {
-            this.shiftOpinion(actor, effect.value, `${card.name}带来的舆论反扑`);
+          if (pending.card.cost >= (effect.threshold ?? 0)) {
+            this.shiftOpinion(actor, effect.value ?? 0, `${definition.name}带来的舆论反扑`);
           }
           break;
         case "convertPendingFaceToOpinion":
-          pending.convertFaceToOpinion = effect.value;
+          pending.convertFaceToOpinion = effect.value ?? 0;
           pending.convertFaceToOpinionBy = actor.side;
           break;
         case "tiltIfActorOpinionBehind":
           if (this.relativeOpinion(pending.actorSide) < 0) {
             this.adjustTilt(
               this.getCombatant(pending.actorSide),
-              effect.value,
-              `${card.name}让对手舆情反噬`,
+              effect.value ?? 0,
+              `${definition.name}让对手舆情反噬`,
             );
           }
           break;
         case "tiltIfPendingActorPlayedTypeThisTurn":
           if (
-            (this.getCombatant(pending.actorSide).playedTypeCounts[effect.type] || 0) > 0
+            (this.getCombatant(pending.actorSide).playedTypeCounts[effect.type ?? "Thesis"] ?? 0) > 0
           ) {
             this.adjustTilt(
               this.getCombatant(pending.actorSide),
-              effect.value,
-              `${card.name}指出了对手的套路`,
+              effect.value ?? 0,
+              `${definition.name}指出了对手的套路`,
             );
           }
           break;
@@ -596,183 +654,179 @@ export class WinGame {
     });
   }
 
-  resolvePendingAction() {
-    const pending = this.state.battle.pendingAction;
+  private resolvePendingAction(): void {
+    const pending = this.battle().pendingAction;
     if (!pending) {
       return;
     }
 
     const actor = this.getCombatant(pending.actorSide);
     const target = this.getCombatant(pending.targetSide);
-    const { card } = pending;
-
     if (pending.cancel) {
-      this.log(`【${card.name}】被直接掐掉了。`);
-      this.state.battle.pendingAction = null;
+      this.log(`【${pending.card.name}】被直接掐掉了。`);
+      this.battle().pendingAction = null;
       this.resolveBattleOutcome();
       return;
     }
 
-    if (pending.cancelRedirect && card.keywords.includes("redirect")) {
-      this.log(`【${card.name}】的转进结算被取消。`);
-      this.state.battle.pendingAction = null;
+    if (pending.cancelRedirect && pending.card.keywords.includes("redirect")) {
+      this.log(`【${pending.card.name}】的转进结算被取消。`);
+      this.battle().pendingAction = null;
       this.resolveBattleOutcome();
       return;
     }
 
-    card.effects.forEach((effect) => {
-      this.executeEffect(effect, { actor, target, card, pending });
+    pending.card.effects.forEach((effect) => {
+      this.executeEffect(effect, actor, target, pending);
     });
 
     if (pending.injectedOpinionBonus > 0) {
-      this.shiftOpinion(
-        actor,
-        pending.injectedOpinionBonus,
-        `${card.name}借【我们讨论的是】追加了节奏`,
-        true,
-      );
+      this.shiftOpinion(actor, pending.injectedOpinionBonus, `${pending.card.name}借额外节奏扩音`, true);
     }
 
-    this.state.battle.pendingAction = null;
+    this.battle().pendingAction = null;
     this.resolveBattleOutcome();
   }
 
-  executeEffect(effect, context) {
-    const { actor, target, card, pending } = context;
-    switch (effect.id) {
+  private executeEffect(
+    effect: CardDefinition["effects"][number],
+    actor: CombatantState,
+    target: CombatantState,
+    pending: PendingAction,
+  ): void {
+    switch (effect.kind) {
       case "applyStatus":
-        this.applyStatus(
-          effect.target === "self" ? actor : target,
-          effect.status,
-          effect.duration,
-        );
+        this.applyStatus(effect.target === "self" ? actor : target, effect.statusId!, effect.duration ?? 1);
         break;
       case "tilt":
-        this.adjustTilt(effect.target === "self" ? actor : target, effect.value, card.name);
+        this.adjustTilt(effect.target === "self" ? actor : target, effect.value ?? 0, pending.card.name);
         break;
       case "dealFace":
-        this.applyFaceEffect(effect.value, context);
+        this.applyFaceEffect(effect.value ?? 0, actor, target, pending);
         break;
       case "opinionIfSelfHasStatus":
-        if (this.hasStatus(actor, effect.status) && !pending.cancelBonus) {
-          this.shiftOpinion(actor, effect.value, `${card.name}借势推进舆论`, false, card);
+        if (effect.statusId && this.hasStatus(actor, effect.statusId) && !pending.cancelBonus) {
+          this.shiftOpinion(actor, effect.value ?? 0, `${pending.card.name}借势推进舆论`, false, pending.card);
         }
         break;
       case "gainMomentum":
-        this.gainMomentum(actor, effect.value);
+        this.gainMomentum(actor, effect.value ?? 0);
         break;
       case "draw":
-        this.drawCards(actor, effect.value);
+        this.drawCards(actor, effect.value ?? 0);
         break;
       case "gainBlock":
-        this.gainBlock(actor, effect.value, card);
+        this.gainBlock(actor, effect.value ?? 0, pending.card);
         break;
       case "reduceTilt":
-        this.adjustTilt(actor, -effect.value, card.name);
+        this.adjustTilt(actor, -(effect.value ?? 0), pending.card.name);
         break;
       case "setNextArgumentToOpinion":
         actor.nextArgumentToOpinion = true;
         break;
       case "dealFaceIfTargetHasStatus":
         this.applyFaceEffect(
-          effect.base +
-            (!pending.cancelBonus && this.targetHasAnyStatus(target) ? effect.bonus : 0),
-          context,
+          (effect.base ?? 0) +
+            (!pending.cancelBonus && this.targetHasAnyStatus(target) ? effect.bonus ?? 0 : 0),
+          actor,
+          target,
+          pending,
         );
         break;
       case "drawIfLeading":
         if (!pending.cancelBonus && this.relativeOpinion(actor.side) > 0) {
-          this.drawCards(actor, effect.value);
+          this.drawCards(actor, effect.value ?? 0);
         }
         break;
       case "dealFaceIfOpinionAtLeast":
         this.applyFaceEffect(
-          effect.base +
-            (!pending.cancelBonus &&
-            this.relativeOpinion(actor.side) >= effect.threshold
-              ? effect.bonus
+          (effect.base ?? 0) +
+            (!pending.cancelBonus && this.relativeOpinion(actor.side) >= (effect.threshold ?? 0)
+              ? effect.bonus ?? 0
               : 0),
-          context,
+          actor,
+          target,
+          pending,
         );
         break;
       case "gainOpinion":
-        this.shiftOpinion(actor, effect.value, card.name, false, card);
+        this.shiftOpinion(actor, effect.value ?? 0, pending.card.name, false, pending.card);
         break;
       case "dealFaceByPositiveOpinion": {
-        const positive = Math.max(0, this.relativeOpinion(actor.side));
-        const damage = Math.min(effect.cap, positive * effect.per);
-        this.applyFaceEffect(damage, context);
+        const positiveOpinion = Math.max(0, this.relativeOpinion(actor.side));
+        const damage = Math.min(effect.cap ?? 0, positiveOpinion * (effect.per ?? 0));
+        this.applyFaceEffect(damage, actor, target, pending);
         break;
       }
       case "dealFaceIfTargetTiltAtLeast":
         this.applyFaceEffect(
-          effect.base +
-            (!pending.cancelBonus && target.tilt >= effect.threshold ? effect.bonus : 0),
-          context,
+          (effect.base ?? 0) +
+            (!pending.cancelBonus && target.tilt >= (effect.threshold ?? 0) ? effect.bonus ?? 0 : 0),
+          actor,
+          target,
+          pending,
         );
         break;
       case "dealFaceIfTargetTookTiltThisTurn":
         if (!pending.cancelBonus && target.tookTiltThisTurn) {
-          this.applyFaceEffect(effect.value, context);
+          this.applyFaceEffect(effect.value ?? 0, actor, target, pending);
         }
         break;
       case "forcedComposureIfTiltAtLeast":
-        if (target.tilt >= effect.threshold) {
-          this.triggerComposure(target, `${card.name}强行把对手打到失态`, true);
+        if (target.tilt >= (effect.threshold ?? 0)) {
+          this.triggerComposure(target, `${pending.card.name}强行把对手打到失态`, true);
         }
         break;
       case "setNextCardOpinionBonus":
-        actor.nextCardOpinionBonus += effect.value;
+        actor.nextCardOpinionBonus += effect.value ?? 0;
         break;
       case "replaceTargetStatus":
-        this.replaceTargetStatus(target, card.name);
+        this.replaceTargetStatus(target, pending.card.name);
         break;
       case "removeEnemyBuff":
         this.removeEnemyBuff(target);
         break;
       case "flipOpinion":
-        this.state.battle.opinion = clamp(-(this.state.battle.opinion || 0), -7, 7);
-        this.log(`${card.name}让全场舆论方向反过来了。`);
+        this.battle().opinion = clamp(-this.battle().opinion, -7, 7);
+        this.log(`${pending.card.name}让全场舆论方向反过来了。`);
         break;
       case "gainMomentumAndDrawIfFaceAtMost":
-        if (!pending.cancelBonus && actor.face <= effect.threshold) {
-          this.gainMomentum(actor, effect.momentum);
-          this.drawCards(actor, effect.draws);
+        if (!pending.cancelBonus && actor.face <= (effect.threshold ?? 0)) {
+          this.gainMomentum(actor, effect.momentum ?? 0);
+          this.drawCards(actor, effect.draws ?? 0);
         }
         break;
       case "dealFaceIfFaceAtMost":
         this.applyFaceEffect(
-          effect.base +
-            (!pending.cancelBonus && actor.face <= effect.threshold ? effect.bonus : 0),
-          context,
+          (effect.base ?? 0) +
+            (!pending.cancelBonus && actor.face <= (effect.threshold ?? 0) ? effect.bonus ?? 0 : 0),
+          actor,
+          target,
+          pending,
         );
         break;
       case "dealFaceWithLostFaceBonus": {
         const bonus = pending.cancelBonus
           ? 0
-          : Math.min(effect.cap, Math.floor((actor.maxFace - actor.face) / effect.divisor));
-        this.applyFaceEffect(effect.base + bonus, context);
+          : Math.min(effect.cap ?? 0, Math.floor((actor.maxFace - actor.face) / (effect.divisor ?? 1)));
+        this.applyFaceEffect((effect.base ?? 0) + bonus, actor, target, pending);
         break;
       }
       case "preventDefeat":
-        this.applyStatus(actor, "lastWord", effect.duration);
+        this.applyStatus(actor, "lastWord", effect.duration ?? 1);
         break;
       default:
         break;
     }
   }
 
-  applyStatus(target, statusId, duration) {
-    const activeSide = this.state.battle.activeSide;
-    const adjustedDuration = duration + (target.side === activeSide ? 1 : 0);
-    target.statuses[statusId] = Math.max(target.statuses[statusId] || 0, adjustedDuration);
-    const status = STATUS_META[statusId];
-    if (status) {
-      this.log(`${target.name}获得【${status.name}】。`);
-    }
+  private applyStatus(target: CombatantState, statusId: StatusId, duration: number): void {
+    const adjusted = duration + (target.side === this.battle().activeSide ? 1 : 0);
+    target.statuses[statusId] = Math.max(target.statuses[statusId] ?? 0, adjusted);
+    this.log(`${target.name}获得【${STATUS_META[statusId].name}】。`);
   }
 
-  removeEnemyBuff(target) {
+  private removeEnemyBuff(target: CombatantState): void {
     const currentBuff = POSITIVE_STATUS_POOL.find((statusId) => this.hasStatus(target, statusId));
     if (!currentBuff) {
       this.log(`${target.name}没什么增益可拆。`);
@@ -782,20 +836,26 @@ export class WinGame {
     this.log(`${target.name}失去了【${STATUS_META[currentBuff].name}】。`);
   }
 
-  replaceTargetStatus(target, source) {
-    const current = Object.keys(target.statuses).find((statusId) => statusId !== "lastWord");
+  private replaceTargetStatus(target: CombatantState, source: string): void {
+    const current = Object.keys(target.statuses).find((statusId) => statusId !== "lastWord") as
+      | StatusId
+      | undefined;
     if (!current) {
       this.log(`${source}想偷换概念，但目标身上没状态可换。`);
       return;
     }
     delete target.statuses[current];
-    const replacement = sample(this.rng, NEGATIVE_STATUS_POOL);
+    const replacement = this.pickRandom(NEGATIVE_STATUS_POOL);
     this.applyStatus(target, replacement, 1);
-    this.log(`${source}把【${STATUS_META[current]?.name || current}】换成了【${STATUS_META[replacement].name}】。`);
+    this.log(`${source}把【${STATUS_META[current].name}】换成了【${STATUS_META[replacement].name}】。`);
   }
 
-  applyFaceEffect(amount, context) {
-    const { actor, target, card, pending } = context;
+  private applyFaceEffect(
+    amount: number,
+    actor: CombatantState,
+    target: CombatantState,
+    pending: PendingAction,
+  ): void {
     if (amount <= 0) {
       return;
     }
@@ -804,32 +864,27 @@ export class WinGame {
     if (
       this.hasStatus(actor, "stubborn") &&
       actor.face <= 10 &&
-      ["Argument", "Finisher"].includes(card.type)
+      (pending.card.type === "Argument" || pending.card.type === "Finisher")
     ) {
       adjusted += 2;
     }
 
-    if (pending.convertArgumentToOpinion && card.type === "Argument") {
-      this.shiftOpinion(actor, adjusted, `${card.name}把伤害转成了舆论`, true);
+    if (pending.convertArgumentToOpinion && pending.card.type === "Argument") {
+      this.shiftOpinion(actor, adjusted, `${pending.card.name}把伤害转成了舆论`, true);
       return;
     }
 
-    if (pending.convertFaceToOpinion > 0 && target.side === pending.targetSide) {
-      if (!pending.convertFaceToOpinionApplied) {
-        const responder = this.getCombatant(pending.convertFaceToOpinionBy);
-        this.shiftOpinion(
-          responder,
-          pending.convertFaceToOpinion,
-          `${card.name}被转进成了舆论波动`,
-          true,
-        );
-        pending.convertFaceToOpinionApplied = true;
-      }
+    if (pending.convertFaceToOpinion > 0 && !pending.convertFaceToOpinionApplied) {
+      const responder = pending.convertFaceToOpinionBy
+        ? this.getCombatant(pending.convertFaceToOpinionBy)
+        : actor;
+      this.shiftOpinion(responder, pending.convertFaceToOpinion, `${pending.card.name}被转进成了舆论波动`, true);
+      pending.convertFaceToOpinionApplied = true;
       return;
     }
 
-    if (pending.convertFaceToTilt && target.side === pending.targetSide) {
-      this.adjustTilt(target, adjusted, `${card.name}把体面伤害改成了破防`);
+    if (pending.convertFaceToTilt) {
+      this.adjustTilt(target, adjusted, `${pending.card.name}把体面伤害改成了破防`);
       return;
     }
 
@@ -840,7 +895,7 @@ export class WinGame {
     }
 
     if (adjusted <= 0) {
-      this.log(`${card.name}的体面伤害被彻底吃掉了。`);
+      this.log(`${pending.card.name}的体面伤害被彻底吃掉了。`);
       return;
     }
 
@@ -856,23 +911,22 @@ export class WinGame {
     }
 
     target.face = Math.max(-99, target.face - adjusted);
-    this.log(`${card.name}对${target.name}造成 ${adjusted} 点体面伤害。`);
+    this.log(`${pending.card.name}对${target.name}造成 ${adjusted} 点体面伤害。`);
   }
 
-  gainMomentum(actor, amount) {
+  private gainMomentum(actor: CombatantState, amount: number): void {
     actor.momentum = clamp(actor.momentum + amount, 0, 10);
     this.log(`${actor.name}获得 ${amount} 点气势。`);
   }
 
-  gainBlock(actor, amount, card) {
-    const weakened =
-      this.hasStatus(actor, "urgent") && card.type === "Counter" ? 1 : 0;
+  private gainBlock(actor: CombatantState, amount: number, definition: CardDefinition): void {
+    const weakened = this.hasStatus(actor, "urgent") && definition.type === "Counter" ? 1 : 0;
     const finalAmount = Math.max(0, amount - weakened);
     actor.block += finalAmount;
     this.log(`${actor.name}获得 ${finalAmount} 点格挡。`);
   }
 
-  adjustTilt(target, amount, reason) {
+  private adjustTilt(target: CombatantState, amount: number, reason: string): void {
     if (amount === 0) {
       return;
     }
@@ -883,12 +937,12 @@ export class WinGame {
       if (target.tilt >= target.maxTilt) {
         this.triggerComposure(target, `${target.name}破防值爆表，直接失态`);
       }
-    } else {
-      this.log(`${reason}让${target.name}回复 ${Math.abs(amount)} 点情绪。`);
+      return;
     }
+    this.log(`${reason}让${target.name}回复 ${Math.abs(amount)} 点情绪。`);
   }
 
-  triggerComposure(target, reason, forced = false) {
+  private triggerComposure(target: CombatantState, reason: string, forced = false): void {
     if (!forced && target.tilt < target.maxTilt) {
       return;
     }
@@ -903,58 +957,59 @@ export class WinGame {
 
     target.face = Math.max(-99, target.face - 4);
     this.log(`${reason}，${target.name}额外失去 4 点体面。`);
-    const extra = this.state.battle.battlefield.id === "group-chat" ? 1 : 0;
-    this.shiftOpinionAgainst(target, 2 + extra, `${target.name}失态后场面更加失控`);
+    const extraOpinion = this.battle().battlefield.id === "group-chat" ? 1 : 0;
+    this.shiftOpinionAgainst(target, 2 + extraOpinion, `${target.name}失态后场面更加失控`);
   }
 
-  shiftOpinion(actor, amount, reason, asMomentumShift = false, card = null) {
+  private shiftOpinion(
+    actor: CombatantState,
+    amount: number,
+    reason: string,
+    asMomentumShift = false,
+    definition: CardDefinition | null = null,
+  ): void {
     if (amount === 0) {
       return;
     }
 
     let finalAmount = amount;
     const appliesMomentumShift =
-      asMomentumShift || (card && card.keywords.includes("momentumShift"));
+      asMomentumShift || Boolean(definition && definition.keywords.includes("momentumShift"));
 
     if (appliesMomentumShift && this.hasStatus(actor, "mainNarrative")) {
       finalAmount += 1;
     }
-    if (appliesMomentumShift && this.state.battle.battlefield.id === "comment-zone") {
+    if (appliesMomentumShift && this.battle().battlefield.id === "comment-zone") {
       finalAmount += 1;
     }
 
-    if (actor.side === "player") {
-      this.state.battle.opinion = clamp((this.state.battle.opinion || 0) + finalAmount, -7, 7);
-    } else {
-      this.state.battle.opinion = clamp((this.state.battle.opinion || 0) - finalAmount, -7, 7);
-    }
+    this.battle().opinion = clamp(
+      this.battle().opinion + (actor.side === "player" ? finalAmount : -finalAmount),
+      -7,
+      7,
+    );
     this.log(`${reason}，舆论 ${finalAmount > 0 ? "+" : ""}${finalAmount}。`);
   }
 
-  shiftOpinionAgainst(target, amount, reason) {
+  private shiftOpinionAgainst(target: CombatantState, amount: number, reason: string): void {
     const source = target.side === "player" ? this.getCombatant("enemy") : this.getCombatant("player");
     this.shiftOpinion(source, amount, reason);
   }
 
-  relativeOpinion(side) {
-    const opinion = this.state.battle.opinion || 0;
-    return side === "player" ? opinion : -opinion;
+  relativeOpinion(side: Side): number {
+    return side === "player" ? this.battle().opinion : -this.battle().opinion;
   }
 
-  targetHasAnyStatus(target) {
+  private targetHasAnyStatus(target: CombatantState): boolean {
     return Object.keys(target.statuses).some((statusId) => statusId !== "lastWord");
   }
 
-  hasStatus(target, statusId) {
-    return (target.statuses[statusId] || 0) > 0;
+  hasStatus(target: CombatantState, statusId: StatusId): boolean {
+    return (target.statuses[statusId] ?? 0) > 0;
   }
 
-  resolveBattleOutcome() {
-    const battle = this.state.battle;
-    if (!battle) {
-      return false;
-    }
-
+  private resolveBattleOutcome(): boolean {
+    const battle = this.battle();
     const playerDead = battle.player.face <= 0 && !this.hasStatus(battle.player, "lastWord");
     const enemyDead = battle.enemy.face <= 0 && !this.hasStatus(battle.enemy, "lastWord");
 
@@ -977,13 +1032,13 @@ export class WinGame {
       return true;
     }
 
-    this.state.rewardOptions = sampleMany(this.rng, REWARD_POOL, 3);
+    this.state.rewardOptions = this.sampleMany(REWARD_POOL, 3);
     this.state.phase = "reward";
     this.log("战斗结束，你恢复 5 点体面并选择 1 张新牌加入牌组。");
     return true;
   }
 
-  chooseReward(cardId) {
+  chooseReward(cardId: string): boolean {
     if (this.state.phase !== "reward") {
       return false;
     }
@@ -993,58 +1048,52 @@ export class WinGame {
     return true;
   }
 
-  enemyTakeStep() {
+  enemyTakeStep(): boolean {
     if (this.state.phase !== "enemy-turn") {
       return false;
     }
+
     const enemy = this.getCombatant("enemy");
+    const player = this.getCombatant("player");
     const playable = enemy.hand
-      .filter((instance) => {
-        const definition = CARD_LIBRARY[instance.cardId];
-        return this.isCardPlayable(enemy, definition, "normal");
-      })
-      .map((instance) => ({
-        ...instance,
-        definition: CARD_LIBRARY[instance.cardId],
-      }));
+      .map((instance) => ({ ...instance, definition: CARD_LIBRARY[instance.cardId] }))
+      .filter(({ definition }) => this.isCardPlayable(enemy, definition, "normal"));
 
     if (enemy.turnCardsPlayed >= 3 || playable.length === 0) {
       this.finishTurn("enemy");
       return true;
     }
 
-    const choice = playable
-      .map((instance) => ({
-        instance,
-        score: this.scoreEnemyCard(instance.definition),
-      }))
-      .sort((left, right) => right.score - left.score)[0];
+    playable.sort((left, right) => {
+      return this.scoreEnemyCard(right.definition, enemy, player) - this.scoreEnemyCard(left.definition, enemy, player);
+    });
 
-    this.playCard("enemy", choice.instance.uid);
+    this.playCard("enemy", playable[0].uid);
     return true;
   }
 
-  scoreEnemyCard(card) {
-    const enemy = this.getCombatant("enemy");
-    const player = this.getCombatant("player");
-    const behavior = this.state.battle.encounter.behavior;
+  private scoreEnemyCard(
+    definition: CardDefinition,
+    enemy: CombatantState,
+    player: CombatantState,
+  ): number {
+    const behavior = this.battle().encounter.behavior;
+    let score = 1 + definition.cost * 0.35;
 
-    let score = 1 + card.cost * 0.35;
-
-    const behaviorWeights = {
+    const behaviorWeights: Record<string, Record<CardType, number>> = {
       counter: {
         Counter: 2.1,
         Redirect: 1.8,
         Argument: 1.3,
         Thesis: 1.1,
-        Label: 1.0,
+        Label: 1,
         Finisher: 1.2,
       },
       opinion: {
-        Thesis: 2.0,
+        Thesis: 2,
         Argument: 1.7,
         Finisher: 1.5,
-        Redirect: 1.0,
+        Redirect: 1,
         Counter: 0.8,
         Label: 0.9,
       },
@@ -1052,7 +1101,7 @@ export class WinGame {
         Label: 2.2,
         Argument: 1.8,
         Finisher: 1.6,
-        Redirect: 1.0,
+        Redirect: 1,
         Counter: 0.8,
         Thesis: 0.9,
       },
@@ -1060,84 +1109,100 @@ export class WinGame {
         Finisher: 2.3,
         Argument: 1.8,
         Label: 1.3,
-        Counter: 1.0,
+        Counter: 1,
         Redirect: 1.2,
         Thesis: 1.1,
       },
     };
 
-    score *= behaviorWeights[behavior][card.type] || 1;
+    score *= behaviorWeights[behavior][definition.type];
 
-    if (card.keywords.includes("momentumShift") && this.relativeOpinion("enemy") < 2) {
+    if (definition.keywords.includes("momentumShift") && this.relativeOpinion("enemy") < 2) {
       score += 2;
     }
-    if (this.hasStatus(enemy, "mainNarrative") && card.keywords.includes("momentumShift")) {
+    if (this.hasStatus(enemy, "mainNarrative") && definition.keywords.includes("momentumShift")) {
       score += 1;
     }
-    if (player.tilt >= 7 && card.id === "cant-hold") {
+    if (player.tilt >= 7 && definition.id === "cant-hold") {
       score += 7;
     }
-    if (player.tilt >= 5 && card.id === "break-check") {
+    if (player.tilt >= 5 && definition.id === "break-check") {
       score += 4;
     }
-    if (player.tookTiltThisTurn && card.id === "keep-hitting") {
+    if (player.tookTiltThisTurn && definition.id === "keep-hitting") {
       score += 4;
     }
-    if (enemy.face <= 10 && ["not-lost", "force-explain", "headwind-output"].includes(card.id)) {
+    if (enemy.face <= 10 && ["not-lost", "force-explain", "headwind-output"].includes(definition.id)) {
       score += 4;
     }
-    if (enemy.face <= 8 && card.id === "win-hard") {
+    if (enemy.face <= 8 && definition.id === "win-hard") {
       score += 8;
     }
-    if (card.id === "everyone-knows" && this.relativeOpinion("enemy") >= 3) {
+    if (definition.id === "everyone-knows" && this.relativeOpinion("enemy") >= 3) {
       score += 4;
     }
-    if (card.id === "group-consensus" && this.relativeOpinion("enemy") >= 2) {
+    if (definition.id === "group-consensus" && this.relativeOpinion("enemy") >= 2) {
       score += 3;
     }
-    if (card.id === "burst-point") {
+    if (definition.id === "burst-point") {
       score += Math.max(-2, this.relativeOpinion("enemy"));
     }
-    if (card.id === "main-narrative" && !this.hasStatus(enemy, "mainNarrative")) {
+    if (definition.id === "main-narrative" && !this.hasStatus(enemy, "mainNarrative")) {
       score += 2;
     }
-    if (card.id === "topic-swap" && this.relativeOpinion("enemy") <= -2) {
+    if (definition.id === "topic-swap" && this.relativeOpinion("enemy") <= -2) {
       score += 5;
     }
-    if (card.id === "redefine" && (this.hasStatus(player, "mainNarrative") || this.hasStatus(player, "stubborn"))) {
+    if (
+      definition.id === "redefine" &&
+      (this.hasStatus(player, "mainNarrative") || this.hasStatus(player, "stubborn"))
+    ) {
       score += 4;
     }
-    if (card.id === "shift-meaning" && this.targetHasAnyStatus(player)) {
+    if (definition.id === "shift-meaning" && this.targetHasAnyStatus(player)) {
       score += 3;
     }
-    if (card.id === "not-over" && enemy.face <= 10 && !this.hasStatus(enemy, "lastWord")) {
+    if (definition.id === "not-over" && enemy.face <= 10 && !this.hasStatus(enemy, "lastWord")) {
       score += 4;
     }
-    if (card.id === "classic-redirect" && enemy.hand.some((instance) => CARD_LIBRARY[instance.cardId].type === "Argument")) {
+    if (
+      definition.id === "classic-redirect" &&
+      enemy.hand.some((instance) => CARD_LIBRARY[instance.cardId].type === "Argument")
+    ) {
       score += 2;
     }
-    if (card.id === "we-are-discussing" && enemy.hand.some((instance) => ["Argument", "Finisher"].includes(CARD_LIBRARY[instance.cardId].type))) {
+    if (
+      definition.id === "we-are-discussing" &&
+      enemy.hand.some((instance) => {
+        const card = CARD_LIBRARY[instance.cardId];
+        return card.type === "Argument" || card.type === "Finisher";
+      })
+    ) {
       score += 2;
     }
 
     return score;
   }
 
-  skipResponse() {
-    if (this.state.phase !== "response-window") {
-      return false;
-    }
-    this.log("你选择先不接这波。");
-    this.state.phase = "enemy-turn";
-    this.resolvePendingAction();
-    return true;
+  private pickRandom<T>(items: readonly T[]): T {
+    return items[Math.floor(this.rng() * items.length)];
   }
 
-  log(message) {
+  private sampleMany<T>(items: readonly T[], count: number): T[] {
+    const pool = [...items];
+    const result: T[] = [];
+    while (pool.length > 0 && result.length < count) {
+      const index = Math.floor(this.rng() * pool.length);
+      result.push(pool.splice(index, 1)[0]);
+    }
+    return result;
+  }
+
+  private log(message: string): void {
     this.state.log.unshift({
-      id: `log-${Date.now()}-${Math.random().toString(16).slice(2, 7)}`,
+      id: `log-${this.logCounter++}`,
       message,
     });
-    this.state.log = this.state.log.slice(0, 14);
+    this.state.log = this.state.log.slice(0, 16);
   }
 }

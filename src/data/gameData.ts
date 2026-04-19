@@ -1,4 +1,14 @@
-export const CARD_TYPES = {
+import type {
+  BattlefieldDefinition,
+  CardDefinition,
+  EncounterDefinition,
+  StatusId,
+  StatusMeta,
+} from "../core/types";
+
+const card = (definition: CardDefinition): CardDefinition => definition;
+
+export const CARD_TYPES: Record<CardDefinition["type"], string> = {
   Thesis: "立论",
   Argument: "论证",
   Counter: "反制",
@@ -7,7 +17,7 @@ export const CARD_TYPES = {
   Finisher: "终结",
 };
 
-export const KEYWORD_LABELS = {
+export const KEYWORD_LABELS: Record<string, string> = {
   response: "回应",
   redirect: "转进",
   label: "定性",
@@ -16,7 +26,7 @@ export const KEYWORD_LABELS = {
   bringUpPast: "翻旧账",
 };
 
-export const STATUS_META = {
+export const STATUS_META: Record<StatusId, StatusMeta> = {
   urgent: {
     name: "急了",
     tone: "bad",
@@ -50,16 +60,12 @@ export const STATUS_META = {
   lastWord: {
     name: "还没结束",
     tone: "good",
-    description: "暂时不会因体面归零失败，并在失守后回 1 点体面。",
+    description: "本轮不会被打出局；若体面归零会回 1 点。",
   },
 };
 
-function makeCard(definition) {
-  return definition;
-}
-
-export const ALL_CARDS = [
-  makeCard({
+export const ALL_CARDS: CardDefinition[] = [
+  card({
     id: "you-urgent",
     name: "你急了",
     cost: 1,
@@ -69,11 +75,11 @@ export const ALL_CARDS = [
     keywords: ["label"],
     description: "使目标获得【急了】1 回合，并增加 2 点破防。",
     effects: [
-      { id: "applyStatus", status: "urgent", duration: 1, target: "enemy" },
-      { id: "tilt", value: 2, target: "enemy" },
+      { kind: "applyStatus", target: "enemy", statusId: "urgent", duration: 1 },
+      { kind: "tilt", target: "enemy", value: 2 },
     ],
   }),
-  makeCard({
+  card({
     id: "ask-first",
     name: "先问是不是",
     cost: 1,
@@ -82,9 +88,9 @@ export const ALL_CARDS = [
     context: "response",
     keywords: ["response"],
     description: "使一张敌方论证牌伤害 -2。",
-    effects: [{ id: "reducePendingFace", value: 2 }],
+    effects: [{ kind: "reducePendingFace", value: 2 }],
   }),
-  makeCard({
+  card({
     id: "where-data",
     name: "数据呢",
     cost: 1,
@@ -94,11 +100,11 @@ export const ALL_CARDS = [
     keywords: [],
     description: "造成 3 点体面伤害；若你本回合拥有主叙事，再造成 1 点舆论变化。",
     effects: [
-      { id: "dealFace", value: 3, target: "enemy" },
-      { id: "opinionIfSelfHasStatus", status: "mainNarrative", value: 1 },
+      { kind: "dealFace", target: "enemy", value: 3 },
+      { kind: "opinionIfSelfHasStatus", statusId: "mainNarrative", value: 1 },
     ],
   }),
-  makeCard({
+  card({
     id: "whatabout",
     name: "顾左右而言他",
     cost: 1,
@@ -107,9 +113,9 @@ export const ALL_CARDS = [
     context: "response",
     keywords: ["response", "redirect"],
     description: "将一张指向你体面的牌，改为影响舆论 2 点。",
-    effects: [{ id: "convertPendingFaceToOpinion", value: 2 }],
+    effects: [{ kind: "convertPendingFaceToOpinion", value: 2 }],
   }),
-  makeCard({
+  card({
     id: "ponder",
     name: "我寻思",
     cost: 0,
@@ -119,11 +125,11 @@ export const ALL_CARDS = [
     keywords: [],
     description: "获得 1 点气势，抽 1 张牌。",
     effects: [
-      { id: "gainMomentum", value: 1, target: "self" },
-      { id: "draw", value: 1, target: "self" },
+      { kind: "gainMomentum", target: "self", value: 1 },
+      { kind: "draw", target: "self", value: 1 },
     ],
   }),
-  makeCard({
+  card({
     id: "double-warning",
     name: "双标警告",
     cost: 2,
@@ -132,9 +138,11 @@ export const ALL_CARDS = [
     context: "normal",
     keywords: ["label"],
     description: "目标获得【双标】2 回合。",
-    effects: [{ id: "applyStatus", status: "doubleStandard", duration: 2, target: "enemy" }],
+    effects: [
+      { kind: "applyStatus", target: "enemy", statusId: "doubleStandard", duration: 2 },
+    ],
   }),
-  makeCard({
+  card({
     id: "quote-out",
     name: "断章取义",
     cost: 1,
@@ -143,9 +151,9 @@ export const ALL_CARDS = [
     context: "response",
     keywords: ["response"],
     description: "取消对方牌的附加效果，仅保留基础数值。",
-    effects: [{ id: "cancelPendingBonus" }],
+    effects: [{ kind: "cancelPendingBonus" }],
   }),
-  makeCard({
+  card({
     id: "calm-down",
     name: "你先别急",
     cost: 1,
@@ -153,13 +161,13 @@ export const ALL_CARDS = [
     target: "self",
     context: "normal",
     keywords: [],
-    description: "你失去 1 点破防，并获得 3 点格挡体面伤害。",
+    description: "你失去 1 点破防，并获得 3 点格挡。",
     effects: [
-      { id: "reduceTilt", value: 1, target: "self" },
-      { id: "gainBlock", value: 3, target: "self" },
+      { kind: "reduceTilt", target: "self", value: 1 },
+      { kind: "gainBlock", target: "self", value: 3 },
     ],
   }),
-  makeCard({
+  card({
     id: "classic-redirect",
     name: "经典转进",
     cost: 2,
@@ -168,9 +176,9 @@ export const ALL_CARDS = [
     context: "normal",
     keywords: ["redirect"],
     description: "本回合你下一张论证牌改为“造成等量舆论变化”。",
-    effects: [{ id: "setNextArgumentToOpinion" }],
+    effects: [{ kind: "setNextArgumentToOpinion" }],
   }),
-  makeCard({
+  card({
     id: "quote-old-post",
     name: "引用旧帖",
     cost: 2,
@@ -179,9 +187,9 @@ export const ALL_CARDS = [
     context: "normal",
     keywords: ["bringUpPast"],
     description: "造成 4 点体面伤害；若目标已有状态，则额外 +2。",
-    effects: [{ id: "dealFaceIfTargetHasStatus", base: 4, bonus: 2, target: "enemy" }],
+    effects: [{ kind: "dealFaceIfTargetHasStatus", target: "enemy", base: 4, bonus: 2 }],
   }),
-  makeCard({
+  card({
     id: "not-serious",
     name: "没必要这么认真",
     cost: 1,
@@ -191,11 +199,11 @@ export const ALL_CARDS = [
     keywords: [],
     description: "降低自己 2 点破防，并摸 1 张牌。",
     effects: [
-      { id: "reduceTilt", value: 2, target: "self" },
-      { id: "draw", value: 1, target: "self" },
+      { kind: "reduceTilt", target: "self", value: 2 },
+      { kind: "draw", target: "self", value: 1 },
     ],
   }),
-  makeCard({
+  card({
     id: "logic-leap",
     name: "逻辑跳跃",
     cost: 2,
@@ -205,12 +213,11 @@ export const ALL_CARDS = [
     keywords: ["response"],
     description: "使敌方一张牌失效；若其费用 ≥3，则你获得 1 点舆论。",
     effects: [
-      { id: "counterPending" },
-      { id: "opinionIfPendingCostAtLeast", threshold: 3, value: 1 },
+      { kind: "counterPending" },
+      { kind: "opinionIfPendingCostAtLeast", value: 1, threshold: 3 },
     ],
   }),
-
-  makeCard({
+  card({
     id: "set-pace",
     name: "带节奏",
     cost: 1,
@@ -219,9 +226,9 @@ export const ALL_CARDS = [
     context: "normal",
     keywords: ["momentumShift"],
     description: "舆论 +2。",
-    effects: [{ id: "gainOpinion", value: 2 }],
+    effects: [{ kind: "gainOpinion", value: 2 }],
   }),
-  makeCard({
+  card({
     id: "main-narrative",
     name: "主叙事",
     cost: 2,
@@ -230,9 +237,11 @@ export const ALL_CARDS = [
     context: "normal",
     keywords: [],
     description: "你获得【主叙事】2 回合。",
-    effects: [{ id: "applyStatus", status: "mainNarrative", duration: 2, target: "self" }],
+    effects: [
+      { kind: "applyStatus", target: "self", statusId: "mainNarrative", duration: 2 },
+    ],
   }),
-  makeCard({
+  card({
     id: "hot-search",
     name: "热搜体质",
     cost: 2,
@@ -242,12 +251,12 @@ export const ALL_CARDS = [
     keywords: ["momentumShift"],
     description: "舆论 +1，抽 1 张；若当前舆论领先，再抽 1 张。",
     effects: [
-      { id: "gainOpinion", value: 1 },
-      { id: "draw", value: 1, target: "self" },
-      { id: "drawIfLeading", value: 1, target: "self" },
+      { kind: "gainOpinion", value: 1 },
+      { kind: "draw", target: "self", value: 1 },
+      { kind: "drawIfLeading", target: "self", value: 1 },
     ],
   }),
-  makeCard({
+  card({
     id: "group-consensus",
     name: "群体共识",
     cost: 3,
@@ -256,9 +265,11 @@ export const ALL_CARDS = [
     context: "normal",
     keywords: [],
     description: "若舆论 ≥2，对目标造成 6 点体面伤害，否则造成 3 点。",
-    effects: [{ id: "dealFaceIfOpinionAtLeast", threshold: 2, base: 3, bonus: 3, target: "enemy" }],
+    effects: [
+      { kind: "dealFaceIfOpinionAtLeast", target: "enemy", base: 3, bonus: 3, threshold: 2 },
+    ],
   }),
-  makeCard({
+  card({
     id: "everyone-knows",
     name: "大家都懂",
     cost: 4,
@@ -267,9 +278,11 @@ export const ALL_CARDS = [
     context: "normal",
     keywords: [],
     description: "若舆论 ≥3，造成 10 点体面伤害，否则仅造成 2 点。",
-    effects: [{ id: "dealFaceIfOpinionAtLeast", threshold: 3, base: 2, bonus: 8, target: "enemy" }],
+    effects: [
+      { kind: "dealFaceIfOpinionAtLeast", target: "enemy", base: 2, bonus: 8, threshold: 3 },
+    ],
   }),
-  makeCard({
+  card({
     id: "raise-intensity",
     name: "上强度了",
     cost: 2,
@@ -279,11 +292,11 @@ export const ALL_CARDS = [
     keywords: ["momentumShift"],
     description: "造成 2 点体面伤害，并使舆论 +2。",
     effects: [
-      { id: "dealFace", value: 2, target: "enemy" },
-      { id: "gainOpinion", value: 2 },
+      { kind: "dealFace", target: "enemy", value: 2 },
+      { kind: "gainOpinion", value: 2 },
     ],
   }),
-  makeCard({
+  card({
     id: "opinion-backfire",
     name: "舆情反噬",
     cost: 2,
@@ -292,9 +305,9 @@ export const ALL_CARDS = [
     context: "response",
     keywords: ["response"],
     description: "若对方当前舆论落后，则其本牌额外承受 2 点破防。",
-    effects: [{ id: "tiltIfActorOpinionBehind", value: 2 }],
+    effects: [{ kind: "tiltIfActorOpinionBehind", value: 2 }],
   }),
-  makeCard({
+  card({
     id: "burst-point",
     name: "节奏爆点",
     cost: 3,
@@ -303,10 +316,9 @@ export const ALL_CARDS = [
     context: "normal",
     keywords: ["momentumShift"],
     description: "按当前舆论正值，每点造成 2 点体面伤害，最多 10。",
-    effects: [{ id: "dealFaceByPositiveOpinion", per: 2, cap: 10, target: "enemy" }],
+    effects: [{ kind: "dealFaceByPositiveOpinion", target: "enemy", per: 2, cap: 10 }],
   }),
-
-  makeCard({
+  card({
     id: "snide",
     name: "阴阳怪气",
     cost: 1,
@@ -315,9 +327,9 @@ export const ALL_CARDS = [
     context: "normal",
     keywords: ["label"],
     description: "目标 +3 破防。",
-    effects: [{ id: "tilt", value: 3, target: "enemy" }],
+    effects: [{ kind: "tilt", target: "enemy", value: 3 }],
   }),
-  makeCard({
+  card({
     id: "poke-spot",
     name: "戳痛点",
     cost: 2,
@@ -327,11 +339,11 @@ export const ALL_CARDS = [
     keywords: [],
     description: "造成 2 点体面伤害和 3 点破防。",
     effects: [
-      { id: "dealFace", value: 2, target: "enemy" },
-      { id: "tilt", value: 3, target: "enemy" },
+      { kind: "dealFace", target: "enemy", value: 2 },
+      { kind: "tilt", target: "enemy", value: 3 },
     ],
   }),
-  makeCard({
+  card({
     id: "break-check",
     name: "破防检测",
     cost: 1,
@@ -340,9 +352,11 @@ export const ALL_CARDS = [
     context: "normal",
     keywords: ["label"],
     description: "若目标破防 ≥5，再追加 2 点体面伤害。",
-    effects: [{ id: "dealFaceIfTargetTiltAtLeast", threshold: 5, base: 0, bonus: 2, target: "enemy" }],
+    effects: [
+      { kind: "dealFaceIfTargetTiltAtLeast", target: "enemy", base: 0, bonus: 2, threshold: 5 },
+    ],
   }),
-  makeCard({
+  card({
     id: "dig-history",
     name: "翻旧账",
     cost: 2,
@@ -351,9 +365,9 @@ export const ALL_CARDS = [
     context: "normal",
     keywords: ["bringUpPast"],
     description: "对有状态目标造成 6 点体面伤害，否则 2 点。",
-    effects: [{ id: "dealFaceIfTargetHasStatus", base: 2, bonus: 4, target: "enemy" }],
+    effects: [{ kind: "dealFaceIfTargetHasStatus", target: "enemy", base: 2, bonus: 4 }],
   }),
-  makeCard({
+  card({
     id: "attach-label",
     name: "挂标签",
     cost: 2,
@@ -363,11 +377,11 @@ export const ALL_CARDS = [
     keywords: ["label"],
     description: "使目标获得【已挂标签】并增加 2 点破防。",
     effects: [
-      { id: "applyStatus", status: "labeled", duration: 3, target: "enemy" },
-      { id: "tilt", value: 2, target: "enemy" },
+      { kind: "applyStatus", target: "enemy", statusId: "labeled", duration: 3 },
+      { kind: "tilt", target: "enemy", value: 2 },
     ],
   }),
-  makeCard({
+  card({
     id: "keep-hitting",
     name: "追着打",
     cost: 1,
@@ -376,9 +390,9 @@ export const ALL_CARDS = [
     context: "normal",
     keywords: [],
     description: "若目标本回合获得过破防，则造成 4 点体面伤害。",
-    effects: [{ id: "dealFaceIfTargetTookTiltThisTurn", value: 4, target: "enemy" }],
+    effects: [{ kind: "dealFaceIfTargetTookTiltThisTurn", target: "enemy", value: 4 }],
   }),
-  makeCard({
+  card({
     id: "cant-hold",
     name: "崩不住了",
     cost: 3,
@@ -387,9 +401,9 @@ export const ALL_CARDS = [
     context: "normal",
     keywords: [],
     description: "若目标破防 ≥7，立即触发一次失态。",
-    effects: [{ id: "forcedComposureIfTiltAtLeast", threshold: 7, target: "enemy" }],
+    effects: [{ kind: "forcedComposureIfTiltAtLeast", target: "enemy", threshold: 7 }],
   }),
-  makeCard({
+  card({
     id: "exposed",
     name: "你这就暴露了",
     cost: 1,
@@ -398,10 +412,9 @@ export const ALL_CARDS = [
     context: "response",
     keywords: ["response"],
     description: "若对方本回合打出过立论牌，使其 +3 破防。",
-    effects: [{ id: "tiltIfPendingActorPlayedTypeThisTurn", type: "Thesis", value: 3 }],
+    effects: [{ kind: "tiltIfPendingActorPlayedTypeThisTurn", type: "Thesis", value: 3 }],
   }),
-
-  makeCard({
+  card({
     id: "not-the-point",
     name: "这不是重点",
     cost: 1,
@@ -410,9 +423,9 @@ export const ALL_CARDS = [
     context: "response",
     keywords: ["response", "redirect"],
     description: "使敌方下一次体面伤害改为破防伤害。",
-    effects: [{ id: "convertPendingFaceToTilt" }],
+    effects: [{ kind: "convertPendingFaceToTilt" }],
   }),
-  makeCard({
+  card({
     id: "we-are-discussing",
     name: "我们讨论的是",
     cost: 2,
@@ -421,9 +434,9 @@ export const ALL_CARDS = [
     context: "normal",
     keywords: ["redirect"],
     description: "本回合你的下一张牌额外获得【带节奏】。",
-    effects: [{ id: "setNextCardOpinionBonus", value: 1 }],
+    effects: [{ kind: "setNextCardOpinionBonus", value: 1 }],
   }),
-  makeCard({
+  card({
     id: "shift-meaning",
     name: "偷换概念",
     cost: 2,
@@ -432,9 +445,9 @@ export const ALL_CARDS = [
     context: "normal",
     keywords: ["redirect"],
     description: "将目标一个持续状态替换成另一个随机负面状态。",
-    effects: [{ id: "replaceTargetStatus", target: "enemy" }],
+    effects: [{ kind: "replaceTargetStatus", target: "enemy" }],
   }),
-  makeCard({
+  card({
     id: "redefine",
     name: "重新定义",
     cost: 2,
@@ -444,11 +457,11 @@ export const ALL_CARDS = [
     keywords: [],
     description: "使一个敌方增益效果失效，并获得 1 点舆论。",
     effects: [
-      { id: "removeEnemyBuff", target: "enemy" },
-      { id: "gainOpinion", value: 1 },
+      { kind: "removeEnemyBuff", target: "enemy" },
+      { kind: "gainOpinion", value: 1 },
     ],
   }),
-  makeCard({
+  card({
     id: "dont-derail",
     name: "别带偏了",
     cost: 1,
@@ -457,9 +470,9 @@ export const ALL_CARDS = [
     context: "response",
     keywords: ["response"],
     description: "取消一次敌方【转进】效果。",
-    effects: [{ id: "cancelPendingRedirect" }],
+    effects: [{ kind: "cancelPendingRedirect" }],
   }),
-  makeCard({
+  card({
     id: "topic-swap",
     name: "话题切换",
     cost: 3,
@@ -468,10 +481,9 @@ export const ALL_CARDS = [
     context: "normal",
     keywords: ["redirect", "momentumShift"],
     description: "交换双方当前舆论值的符号。",
-    effects: [{ id: "flipOpinion" }],
+    effects: [{ kind: "flipOpinion" }],
   }),
-
-  makeCard({
+  card({
     id: "not-lost",
     name: "我没输",
     cost: 1,
@@ -480,9 +492,9 @@ export const ALL_CARDS = [
     context: "normal",
     keywords: ["stubborn"],
     description: "若你的体面 ≤10，获得 2 气势并抽 1 张牌。",
-    effects: [{ id: "gainMomentumAndDrawIfFaceAtMost", threshold: 10, momentum: 2, draws: 1 }],
+    effects: [{ kind: "gainMomentumAndDrawIfFaceAtMost", threshold: 10, momentum: 2, draws: 1 }],
   }),
-  makeCard({
+  card({
     id: "stubborn-end",
     name: "嘴硬到底",
     cost: 2,
@@ -491,9 +503,9 @@ export const ALL_CARDS = [
     context: "normal",
     keywords: ["stubborn"],
     description: "你获得【嘴硬】2 回合。",
-    effects: [{ id: "applyStatus", status: "stubborn", duration: 2, target: "self" }],
+    effects: [{ kind: "applyStatus", target: "self", statusId: "stubborn", duration: 2 }],
   }),
-  makeCard({
+  card({
     id: "force-explain",
     name: "强行解释",
     cost: 2,
@@ -502,9 +514,9 @@ export const ALL_CARDS = [
     context: "normal",
     keywords: ["stubborn"],
     description: "造成 4 点体面伤害；若你体面 ≤10，则改为 7 点。",
-    effects: [{ id: "dealFaceIfFaceAtMost", threshold: 10, base: 4, bonus: 3, target: "enemy" }],
+    effects: [{ kind: "dealFaceIfFaceAtMost", target: "enemy", base: 4, bonus: 3, threshold: 10 }],
   }),
-  makeCard({
+  card({
     id: "headwind-output",
     name: "逆风输出",
     cost: 3,
@@ -513,9 +525,9 @@ export const ALL_CARDS = [
     context: "normal",
     keywords: ["stubborn"],
     description: "基础造成 3 点体面伤害，并按你已损失体面的 1/3 追加伤害，最多 +6。",
-    effects: [{ id: "dealFaceWithLostFaceBonus", base: 3, divisor: 3, cap: 6, target: "enemy" }],
+    effects: [{ kind: "dealFaceWithLostFaceBonus", target: "enemy", base: 3, divisor: 3, cap: 6 }],
   }),
-  makeCard({
+  card({
     id: "not-over",
     name: "还没结束",
     cost: 2,
@@ -524,9 +536,9 @@ export const ALL_CARDS = [
     context: "normal",
     keywords: ["stubborn"],
     description: "你暂时不会因体面归零失败；若本轮被打空，会回 1 点体面。",
-    effects: [{ id: "preventDefeat", duration: 1, target: "self" }],
+    effects: [{ kind: "preventDefeat", target: "self", duration: 1 }],
   }),
-  makeCard({
+  card({
     id: "win-hard",
     name: "赢麻了",
     cost: 5,
@@ -535,11 +547,13 @@ export const ALL_CARDS = [
     context: "normal",
     keywords: ["stubborn"],
     description: "若你体面 ≤8，造成 12 点体面伤害；否则造成 5 点。",
-    effects: [{ id: "dealFaceIfFaceAtMost", threshold: 8, base: 5, bonus: 7, target: "enemy" }],
+    effects: [{ kind: "dealFaceIfFaceAtMost", target: "enemy", base: 5, bonus: 7, threshold: 8 }],
   }),
 ];
 
-export const CARD_LIBRARY = Object.fromEntries(ALL_CARDS.map((card) => [card.id, card]));
+export const CARD_LIBRARY = Object.fromEntries(
+  ALL_CARDS.map((cardDefinition) => [cardDefinition.id, cardDefinition]),
+) as Record<string, CardDefinition>;
 
 export const PLAYER_STARTER_DECK = [
   "you-urgent",
@@ -562,26 +576,20 @@ export const PLAYER_STARTER_DECK = [
   "win-hard",
 ];
 
-export const BATTLEFIELDS = {
+export const BATTLEFIELDS: Record<string, BattlefieldDefinition> = {
   "comment-zone": {
     id: "comment-zone",
     name: "评论区",
-    rules: [
-      "所有【带节奏】牌效果 +1。",
-      "所有【回应】牌费用 -1，最低为 0。",
-    ],
+    rules: ["所有【带节奏】牌效果 +1。", "所有【回应】牌费用 -1，最低为 0。"],
   },
   "group-chat": {
     id: "group-chat",
     name: "群聊",
-    rules: [
-      "每回合行动方额外抽 1 张牌。",
-      "每次失态，额外损失 1 点舆论。",
-    ],
+    rules: ["每回合行动方额外抽 1 张牌。", "每次失态，额外损失 1 点舆论。"],
   },
 };
 
-export const ENCOUNTERS = [
+export const ENCOUNTERS: EncounterDefinition[] = [
   {
     id: "nitpicker",
     name: "杠精",
@@ -694,12 +702,18 @@ export const ENCOUNTERS = [
   },
 ];
 
-export const NEGATIVE_STATUS_POOL = ["urgent", "doubleStandard", "speechless", "labeled"];
-export const POSITIVE_STATUS_POOL = ["stubborn", "mainNarrative", "lastWord"];
-export const REWARD_POOL = ALL_CARDS.map((card) => card.id);
+export const NEGATIVE_STATUS_POOL: StatusId[] = [
+  "urgent",
+  "doubleStandard",
+  "speechless",
+  "labeled",
+];
+
+export const POSITIVE_STATUS_POOL: StatusId[] = ["stubborn", "mainNarrative", "lastWord"];
+export const REWARD_POOL = ALL_CARDS.map((cardDefinition) => cardDefinition.id);
 
 export const DEMO_NOTES = [
-  "为了让【回应】真正参与决策，防守方在对手回合获得 1 点临时应对气势。",
-  "【逆风输出】按“基础 3 + 已损失体面 / 3”计算，最多额外 +6。",
-  "【还没结束】在本白盒中会保护你撑过当前交锋，并在被打空时回 1 点体面。",
+  "防守方在对手回合获得 1 点临时应对气势，让【回应】真的值得留手。",
+  "玩家被动保留：首次失态只丢 1 点舆论，不掉体面。",
+  "现在是 Phaser 驱动的网页游戏，不再是静态页白盒。",
 ];
