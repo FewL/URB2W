@@ -50,10 +50,14 @@ jobs:
           rsync -av --delete ./dist/ /tmp/gh-pages/
 
       - name: Commit and push gh-pages
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
+          set -euxo pipefail
           cd /tmp/gh-pages
+          git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git add -A
-          if git diff --cached --quiet; then
+          if [ -z "$(git status --porcelain)" ]; then
             echo "No changes to publish."
             exit 0
           fi
