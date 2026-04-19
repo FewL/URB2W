@@ -34,6 +34,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --global --add safe.directory /tmp/gh-pages
 
       - name: Prepare gh-pages worktree
         run: |
@@ -47,7 +48,7 @@ jobs:
 
       - name: Sync static site
         run: |
-          rsync -av --delete ./dist/ /tmp/gh-pages/
+          rsync -av --delete --exclude='.git' ./dist/ /tmp/gh-pages/
 
       - name: Commit and push gh-pages
         env:
