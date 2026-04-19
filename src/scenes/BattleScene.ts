@@ -1,4 +1,5 @@
 import * as Phaser from "phaser";
+import { winningAudio } from "../audio/winningAudio";
 import { BattleEngine } from "../core/battleEngine";
 import type { ActionBeat, CardDefinition, CombatantState, EngineState } from "../core/types";
 import { CARD_LIBRARY, CARD_TYPES, ENCOUNTERS, KEYWORD_LABELS, STATUS_META } from "../data/gameData";
@@ -41,6 +42,7 @@ export class BattleScene extends Phaser.Scene {
 
   create(): void {
     const { width, height } = this.scale;
+    winningAudio.startMusic("battle");
 
     this.cameras.main.setBackgroundColor(0x110d14);
     this.add.rectangle(width / 2, height / 2, width, height, 0x110d14);
@@ -127,6 +129,11 @@ export class BattleScene extends Phaser.Scene {
     if (this.lastPhase !== state.phase) {
       this.lastPhase = state.phase;
       this.showPhaseBanner(this.phaseLabel(state.phase));
+      if (state.phase === "run-victory" || state.phase === "run-defeat") {
+        winningAudio.playOutcome(state.phase === "run-victory");
+      } else {
+        winningAudio.playPhaseChange(state.phase);
+      }
     }
   }
 
@@ -477,6 +484,7 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private renderTopButtons(state: EngineState): void {
+    const audioState = winningAudio.getState();
     const turnButtonLabel = state.phase === "response-window" ? "不回应" : "结束回合";
     const turnButtonEnabled = state.phase === "player-turn" || state.phase === "response-window";
 
@@ -495,6 +503,23 @@ export class BattleScene extends Phaser.Scene {
       this.scene.start("battle", { seed: `${Date.now()}-${Math.floor(Math.random() * 100000)}` });
     }, 0xff7748, 0x120d12);
     this.root.add(restartButton);
+
+    const musicButton = this.createButton(1108, 92, 56, 34, "乐", true, () => {
+      winningAudio.unlock();
+      winningAudio.toggleMusic();
+      this.renderScene();
+    }, audioState.musicEnabled ? 0xffb35c : 0x342a35, 0x120d12);
+    const sfxButton = this.createButton(1174, 92, 56, 34, "效", true, () => {
+      winningAudio.unlock();
+      winningAudio.toggleSfx();
+      this.renderScene();
+    }, audioState.sfxEnabled ? 0x7ed8ff : 0x342a35, 0x120d12);
+    const voiceButton = this.createButton(1240, 92, 56, 34, "语", true, () => {
+      winningAudio.unlock();
+      winningAudio.toggleVoice();
+      this.renderScene();
+    }, audioState.voiceEnabled ? 0xff93a0 : 0x342a35, 0x120d12);
+    this.root.add([musicButton, sfxButton, voiceButton]);
   }
 
   private renderOverlay(state: EngineState): void {
@@ -590,12 +615,17 @@ export class BattleScene extends Phaser.Scene {
     if (enabled) {
       container.setSize(width, height).setInteractive({ useHandCursor: true });
       container.on("pointerover", () => {
+        winningAudio.playUiHover();
         this.tweens.add({ targets: container, scaleX: 1.03, scaleY: 1.03, duration: 120 });
       });
       container.on("pointerout", () => {
         this.tweens.add({ targets: container, scaleX: 1, scaleY: 1, duration: 120 });
       });
-      container.on("pointerdown", onClick);
+      container.on("pointerdown", () => {
+        winningAudio.unlock();
+        winningAudio.playUiConfirm();
+        onClick();
+      });
     }
     return container;
   }
@@ -719,6 +749,7 @@ export class BattleScene extends Phaser.Scene {
     }
 
     state.actionQueue.slice(before.actionCount).forEach((beat, index) => {
+      winningAudio.playActionBeat(beat, index * 180);
       this.showActionBeat(beat, index * 180);
     });
   }

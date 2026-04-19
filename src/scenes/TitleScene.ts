@@ -1,4 +1,5 @@
 import * as Phaser from "phaser";
+import { winningAudio } from "../audio/winningAudio";
 
 export class TitleScene extends Phaser.Scene {
   constructor() {
@@ -7,6 +8,7 @@ export class TitleScene extends Phaser.Scene {
 
   create(): void {
     const { width, height } = this.scale;
+    winningAudio.startMusic("title");
 
     this.add.rectangle(width / 2, height / 2, width, height, 0x120f16);
     this.add.rectangle(width / 2, height / 2, width * 0.96, height * 0.92, 0x18131d, 0.85).setStrokeStyle(2, 0xff8a5b, 0.18);
@@ -56,6 +58,12 @@ export class TitleScene extends Phaser.Scene {
       },
     );
 
+    this.add.text(102, 452, "点击后启用背景音乐 / 卡牌音效 / 赢学语录播报", {
+      fontFamily: "Space Grotesk, sans-serif",
+      fontSize: "18px",
+      color: "#ffbb8f",
+    });
+
     const bullets = [
       "体面 / 气势 / 舆论 / 破防 四资源并行",
       "40 张牌，3 个普通敌人 + 1 个 Boss",
@@ -85,6 +93,7 @@ export class TitleScene extends Phaser.Scene {
 
     button.setSize(250, 76).setInteractive({ useHandCursor: true });
     button.on("pointerover", () => {
+      winningAudio.playUiHover();
       this.tweens.add({
         targets: button,
         scaleX: 1.04,
@@ -101,6 +110,8 @@ export class TitleScene extends Phaser.Scene {
       });
     });
     button.on("pointerdown", () => {
+      winningAudio.unlock();
+      winningAudio.playUiConfirm();
       this.scene.start("battle", { seed: `${Date.now()}-${Math.floor(Math.random() * 100000)}` });
     });
 
@@ -119,6 +130,8 @@ export class TitleScene extends Phaser.Scene {
     footer.setOrigin(1, 0.5);
 
     this.input.keyboard?.once("keydown-SPACE", () => {
+      winningAudio.unlock();
+      winningAudio.playUiConfirm();
       this.scene.start("battle", { seed: `${Date.now()}-${Math.floor(Math.random() * 100000)}` });
     });
   }
