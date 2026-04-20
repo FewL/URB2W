@@ -74,6 +74,11 @@ export class BattleScene extends Phaser.Scene {
   create(): void {
     const { width, height } = this.scale;
     winningAudio.startMusic("battle");
+    const unlockAudio = (): void => {
+      winningAudio.unlock();
+    };
+    this.input.once("pointerdown", unlockAudio);
+    this.input.keyboard?.once("keydown", unlockAudio);
 
     this.cameras.main.setBackgroundColor(0x110d14);
     this.add.rectangle(width / 2, height / 2, width, height, 0x110d14);

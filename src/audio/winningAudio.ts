@@ -14,6 +14,10 @@ type AudioState = AudioSettings & {
   unlocked: boolean;
 };
 
+type PersistedAudioSettings = Partial<AudioSettings> & {
+  version?: number;
+};
+
 type TrackDefinition = {
   tempo: number;
   bass: Array<number | null>;
@@ -24,6 +28,7 @@ type TrackDefinition = {
 };
 
 const STORAGE_KEY = "urb2w:audio-settings";
+const STORAGE_VERSION = 2;
 
 const TRACKS: Record<TrackName, TrackDefinition> = {
   title: {
@@ -580,7 +585,14 @@ class WinningAudioDirector {
           voiceEnabled: true,
         };
       }
-      const parsed = JSON.parse(raw) as Partial<AudioSettings>;
+      const parsed = JSON.parse(raw) as PersistedAudioSettings;
+      if (parsed.version !== STORAGE_VERSION) {
+        return {
+          musicEnabled: true,
+          sfxEnabled: true,
+          voiceEnabled: true,
+        };
+      }
       return {
         musicEnabled: parsed.musicEnabled ?? true,
         sfxEnabled: parsed.sfxEnabled ?? true,
@@ -599,7 +611,13 @@ class WinningAudioDirector {
     if (!hasWindow()) {
       return;
     }
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(this.settings));
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        version: STORAGE_VERSION,
+        ...this.settings,
+      }),
+    );
   }
 
   private ensureContext(): boolean {
