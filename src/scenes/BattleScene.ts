@@ -1,7 +1,7 @@
 import * as Phaser from "phaser";
 import { winningAudio } from "../audio/winningAudio";
 import { BattleEngine } from "../core/battleEngine";
-import type { ActionBeat, CardDefinition, CombatantState, EngineState } from "../core/types";
+import type { ActionBeat, CardDefinition, CombatantState, EngineState, StatusId } from "../core/types";
 import { CARD_LIBRARY, CARD_TYPES, ENCOUNTERS, KEYWORD_LABELS, STATUS_META } from "../data/gameData";
 import {
   buildBeatFeedPulse,
@@ -21,6 +21,8 @@ type DeltaSnapshot = {
   playerTilt: number;
   enemyTilt: number;
   opinion: number;
+  playerStatuses: Partial<Record<StatusId, number>>;
+  enemyStatuses: Partial<Record<StatusId, number>>;
   actionCount: number;
   phase: string;
   logId: string | null;
@@ -904,6 +906,8 @@ export class BattleScene extends Phaser.Scene {
       playerTilt: battle.player.tilt,
       enemyTilt: battle.enemy.tilt,
       opinion: battle.opinion,
+      playerStatuses: { ...battle.player.statuses },
+      enemyStatuses: { ...battle.enemy.statuses },
       actionCount: state.actionQueue.length,
       phase: state.phase,
       logId: state.log[0]?.id ?? null,
@@ -913,6 +917,12 @@ export class BattleScene extends Phaser.Scene {
   private animateDelta(before: DeltaSnapshot, newBeats: ActionBeat[]): void {
     const state = this.engine.getSnapshot();
     const battle = state.battle!;
+    const collectAppliedStatuses = (
+      previous: Partial<Record<StatusId, number>>,
+      next: Partial<Record<StatusId, number>>,
+    ): StatusId[] => {
+      return (Object.keys(next) as StatusId[]).filter((statusId) => (next[statusId] ?? 0) > (previous[statusId] ?? 0));
+    };
 
     const spawnFloat = (x: number, y: number, text: string, color: string): void => {
       const label = this.add.text(x, y, text, {
@@ -954,6 +964,15 @@ export class BattleScene extends Phaser.Scene {
     newBeats.forEach((beat, index) => {
       winningAudio.playActionBeat(beat, index * 180);
       this.showActionBeat(beat, index * 180);
+    });
+
+    const appliedStatuses = [
+      ...collectAppliedStatuses(before.enemyStatuses, battle.enemy.statuses),
+      ...collectAppliedStatuses(before.playerStatuses, battle.player.statuses),
+    ];
+    const statusDelayBase = newBeats.length * 180 + 980;
+    appliedStatuses.forEach((statusId, index) => {
+      winningAudio.playStatusLine(statusId, statusDelayBase + index * 980);
     });
   }
 

@@ -1,4 +1,4 @@
-import type { ActionBeat, CardType, Phase } from "../core/types";
+import type { ActionBeat, CardType, Phase, StatusId } from "../core/types";
 import type { FeedTone } from "../data/showbiz";
 
 type TrackName = "title" | "battle";
@@ -50,52 +50,150 @@ const TRACKS: Record<TrackName, TrackDefinition> = {
   },
 };
 
-const CARD_LINES: Partial<Record<string, string[]>> = {
-  "you-urgent": ["你急了", "别上头", "急什么"],
-  "ask-first": ["先问是不是，再问为什么", "先问是不是", "前提成立吗"],
-  "where-data": ["数据呢", "表贴一下", "先给样本"],
-  whatabout: ["你要这么想，我也没办法", "别急着答这个", "话题切了"],
-  "quote-out": ["别加戏", "只算底数", "花活删了"],
-  "logic-leap": ["跳步太大", "中间呢", "这不连贯"],
-  "set-pace": ["带节奏", "热度拉满", "跟着我走"],
-  "main-narrative": ["国家在下一盘很大的棋", "版本我写", "你懂的"],
-  "hot-search": ["你品，你细品", "上热搜了", "懂的都懂"],
-  "everyone-knows": ["懂的都懂", "不用多说", "这下默认"],
-  "opinion-backfire": ["反噬了", "回旋镖来了", "自己挨上了"],
-  "burst-point": ["爆点到了", "现在引爆", "一波兑现"],
-  snide: ["阴阳上了", "别急我夸你", "这味对了"],
-  "poke-spot": ["戳痛点了", "扎这里", "正中红心"],
-  "dig-history": ["旧账上桌", "翻记录了", "黑历史来了"],
-  "attach-label": ["标签焊上", "先定性", "帽子戴好"],
-  "cant-hold": ["崩不住了", "绷不住了", "直接失态"],
-  exposed: ["暴露了", "露馅了", "现形了"],
-  "not-the-point": ["这不是重点", "先别打脸", "改判破防"],
-  "we-are-discussing": ["我们讨论的是", "先换题", "这得放到大棋局里看"],
-  "shift-meaning": ["偷换概念", "你品，你细品", "题干换了"],
-  redefine: ["重新定义", "标准重算", "我来改口径"],
-  "dont-derail": ["别带偏了", "回来答题", "别转进"],
-  "topic-swap": ["国家在下一盘很大的棋", "风向翻面", "现在换边"],
-  "not-lost": ["我没输", "你要这么想，我也没办法", "定义还在"],
-  "stubborn-end": ["嘴硬到底", "就是不认", "虽然输了但我没输"],
-  "force-explain": ["2000人民币大于3000美元", "强行解释", "继续硬拗"],
-  "headwind-output": ["2000人民币大于3000美元", "逆风输出", "越逆越冲"],
-  "not-over": ["还没结束", "先别开香槟", "还能抬回来"],
-  "win-hard": ["赢麻了", "双赢就是我赢两次", "给你盖章"],
+const SLOT_LINES = {
+  agenda: [
+    "我们讨论的不是对错，是叙事。",
+    "主叙事一换，输赢全变。",
+    "热搜一上，道理自动站我这边。",
+    "现在的重点是舆论，不是事实。",
+    "节奏一起，谁认真谁就输了。",
+  ],
+  factcheck: [
+    "先问是不是，再问为什么。",
+    "数据呢？拿数据说话。",
+    "你这逻辑跳跃也太大了。",
+    "前提都不成立，结论有什么用？",
+    "连事实都没搞清楚就开始输出？",
+  ],
+  redirect: [
+    "这不是重点，重点是另一件事。",
+    "别带偏，我们回到正题。",
+    "经典转进，不谈问题谈态度。",
+    "顾左右而言他是吧？",
+    "话题切换得真快，不敢正面接？",
+  ],
+  redefine: [
+    "你这是典型偷换概念。",
+    "我重新定义一下，你就懂了。",
+    "词还是那个词，意思已经不是那个意思。",
+    "标准一变，结论自然跟着变。",
+    "你对XX的理解完全错了。",
+  ],
+  label: [
+    "你急了，你真的急了。",
+    "双标警告，别双标。",
+    "直接给你挂个标签算了。",
+    "阴阳怪气什么呢？",
+    "破防之前先扣帽，传统艺能。",
+  ],
+  meltdown: [
+    "戳到你痛点了是吧？",
+    "破防检测，阳性。",
+    "舆情反噬来了，挡不住。",
+    "你这就暴露真实想法了？",
+    "绷不住了，开始乱咬了。",
+  ],
+  history: [
+    "引用旧帖，自己看你以前说的。",
+    "别装失忆，翻旧账了。",
+    "历史记录不会骗人。",
+    "去年你可不是这么说的。",
+    "自己打自己脸是吧？",
+  ],
+  consensus: [
+    "群体共识在此，你反对没用。",
+    "大家都懂，就你装不懂。",
+    "上强度了，准备接好。",
+    "节奏爆点已触发。",
+    "路人都看明白了。",
+  ],
+  stubborn: [
+    "我没输，只是战略撤退。",
+    "嘴硬到底，绝不承认。",
+    "强行解释一波，完美闭环。",
+    "逆风输出，越逆风越勇。",
+    "还没结束，游戏才刚刚开始。",
+    "赢麻了，已经赢麻了。",
+    "我们赢太多了，都累了。",
+    "没人比我们更懂赢。",
+    "看似输了，其实全赢。",
+    "结果不重要，姿态我赢了。",
+  ],
+  calm: [
+    "我寻思也没多大事。",
+    "没必要这么认真，玩玩而已。",
+    "你先别急，慢慢说。",
+    "冷静点，别上头。",
+    "不至于，真不至于。",
+  ],
+} as const;
+
+const CARD_LINES: Partial<Record<string, readonly string[]>> = {
+  "you-urgent": SLOT_LINES.label,
+  "ask-first": SLOT_LINES.factcheck,
+  "where-data": SLOT_LINES.factcheck,
+  whatabout: SLOT_LINES.redirect,
+  ponder: SLOT_LINES.calm,
+  "double-warning": SLOT_LINES.label,
+  "quote-out": SLOT_LINES.factcheck,
+  "calm-down": SLOT_LINES.calm,
+  "classic-redirect": SLOT_LINES.redirect,
+  "quote-old-post": SLOT_LINES.history,
+  "not-serious": SLOT_LINES.calm,
+  "logic-leap": SLOT_LINES.factcheck,
+  "set-pace": SLOT_LINES.agenda,
+  "main-narrative": SLOT_LINES.agenda,
+  "hot-search": SLOT_LINES.agenda,
+  "group-consensus": SLOT_LINES.consensus,
+  "everyone-knows": SLOT_LINES.consensus,
+  "raise-intensity": SLOT_LINES.consensus,
+  "opinion-backfire": SLOT_LINES.meltdown,
+  "burst-point": SLOT_LINES.consensus,
+  snide: SLOT_LINES.label,
+  "poke-spot": SLOT_LINES.meltdown,
+  "break-check": SLOT_LINES.meltdown,
+  "dig-history": SLOT_LINES.history,
+  "attach-label": SLOT_LINES.label,
+  "keep-hitting": SLOT_LINES.meltdown,
+  "cant-hold": SLOT_LINES.meltdown,
+  exposed: SLOT_LINES.meltdown,
+  "not-the-point": SLOT_LINES.redirect,
+  "we-are-discussing": SLOT_LINES.agenda,
+  "shift-meaning": SLOT_LINES.redefine,
+  redefine: SLOT_LINES.redefine,
+  "dont-derail": SLOT_LINES.redirect,
+  "topic-swap": SLOT_LINES.redirect,
+  "not-lost": SLOT_LINES.stubborn,
+  "stubborn-end": SLOT_LINES.stubborn,
+  "force-explain": SLOT_LINES.stubborn,
+  "headwind-output": SLOT_LINES.stubborn,
+  "not-over": SLOT_LINES.stubborn,
+  "win-hard": SLOT_LINES.stubborn,
 };
 
-const TYPE_LINES: Record<CardType, string[]> = {
-  Thesis: ["国家在下一盘很大的棋", "你品，你细品", "调门先起"],
-  Argument: ["2000人民币大于3000美元", "论证顶上", "懂的都懂"],
-  Counter: ["先问是不是，再问为什么", "反手打断", "这句不算"],
-  Label: ["先挂标签", "帽子扣上", "这下懂的都懂"],
-  Redirect: ["你要这么想，我也没办法", "话题拐了", "别往这答"],
-  Finisher: ["赢麻了", "双赢就是我赢两次", "现在盖章"],
+const TYPE_LINES: Record<CardType, readonly string[]> = {
+  Thesis: SLOT_LINES.agenda,
+  Argument: SLOT_LINES.consensus,
+  Counter: SLOT_LINES.factcheck,
+  Label: SLOT_LINES.label,
+  Redirect: SLOT_LINES.redirect,
+  Finisher: SLOT_LINES.stubborn,
 };
 
 const OUTCOME_LINES = {
-  victory: ["赢麻了", "双赢就是我赢两次", "这波属于遥遥领先"],
-  defeat: ["虽然输了但我没输", "你要这么想，我也没办法", "这叫战略性不赢"],
+  victory: ["赢麻了，已经赢麻了。", "我们赢太多了，都累了。", "没人比我们更懂赢。"],
+  defeat: ["看似输了，其实全赢。", "结果不重要，姿态我赢了。", "我没输，只是战略撤退。"],
 } as const;
+
+const STATUS_LINES: Record<StatusId, readonly string[]> = {
+  urgent: ["急了急了急了"],
+  doubleStandard: ["经典双标，鉴定完毕"],
+  stubborn: ["嘴硬王者，永不认输"],
+  speechless: ["彻底失语，无话可说"],
+  mainNarrative: ["主叙事已占领"],
+  labeled: ["标签已挂上，撕不掉"],
+  lastWord: ["还没结束，等着"],
+};
 
 const PHASE_LINES: Partial<Record<Phase, string>> = {
   "player-turn": "轮到你了",
@@ -330,6 +428,19 @@ class WinningAudioDirector {
       victory ? 1.08 : 0.92,
       victory ? 0.95 : 0.78,
       true,
+    );
+  }
+
+  playStatusLine(statusId: StatusId, delayMs = 0): void {
+    const lines = STATUS_LINES[statusId];
+    if (!lines || lines.length === 0) {
+      return;
+    }
+    this.speak(
+      choose(lines),
+      delayMs,
+      statusId === "speechless" ? 0.9 : 1.02,
+      statusId === "mainNarrative" || statusId === "lastWord" ? 0.92 : 1.02,
     );
   }
 
