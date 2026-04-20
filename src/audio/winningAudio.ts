@@ -52,14 +52,14 @@ const TRACKS: Record<TrackName, TrackDefinition> = {
 
 const CARD_LINES: Partial<Record<string, string[]>> = {
   "you-urgent": ["你急了", "别上头", "急什么"],
-  "ask-first": ["来源呢", "先问是不是", "证据先拿"],
+  "ask-first": ["先问是不是，再问为什么", "先问是不是", "前提成立吗"],
   "where-data": ["数据呢", "表贴一下", "先给样本"],
-  whatabout: ["你先说这个", "别急着答", "话题切了"],
+  whatabout: ["你要这么想，我也没办法", "别急着答这个", "话题切了"],
   "quote-out": ["别加戏", "只算底数", "花活删了"],
   "logic-leap": ["跳步太大", "中间呢", "这不连贯"],
   "set-pace": ["带节奏", "热度拉满", "跟着我走"],
-  "main-narrative": ["主叙事上线", "版本我写", "框架先定"],
-  "hot-search": ["上热搜了", "流量来了", "继续拱火"],
+  "main-narrative": ["国家在下一盘很大的棋", "版本我写", "你懂的"],
+  "hot-search": ["你品，你细品", "上热搜了", "懂的都懂"],
   "everyone-knows": ["懂的都懂", "不用多说", "这下默认"],
   "opinion-backfire": ["反噬了", "回旋镖来了", "自己挨上了"],
   "burst-point": ["爆点到了", "现在引爆", "一波兑现"],
@@ -70,27 +70,32 @@ const CARD_LINES: Partial<Record<string, string[]>> = {
   "cant-hold": ["崩不住了", "绷不住了", "直接失态"],
   exposed: ["暴露了", "露馅了", "现形了"],
   "not-the-point": ["这不是重点", "先别打脸", "改判破防"],
-  "we-are-discussing": ["我们讨论的是", "先换题", "议程改了"],
-  "shift-meaning": ["偷换概念", "语义挪了", "题干换了"],
+  "we-are-discussing": ["我们讨论的是", "先换题", "这得放到大棋局里看"],
+  "shift-meaning": ["偷换概念", "你品，你细品", "题干换了"],
   redefine: ["重新定义", "标准重算", "我来改口径"],
   "dont-derail": ["别带偏了", "回来答题", "别转进"],
-  "topic-swap": ["风向翻面", "地图重画", "现在换边"],
-  "not-lost": ["我没输", "不认这个", "定义还在"],
-  "stubborn-end": ["嘴硬到底", "就是不认", "继续强撑"],
-  "force-explain": ["强行解释", "继续硬拗", "字数补洞"],
-  "headwind-output": ["逆风输出", "顶回去", "越逆越冲"],
+  "topic-swap": ["国家在下一盘很大的棋", "风向翻面", "现在换边"],
+  "not-lost": ["我没输", "你要这么想，我也没办法", "定义还在"],
+  "stubborn-end": ["嘴硬到底", "就是不认", "虽然输了但我没输"],
+  "force-explain": ["2000人民币大于3000美元", "强行解释", "继续硬拗"],
+  "headwind-output": ["2000人民币大于3000美元", "逆风输出", "越逆越冲"],
   "not-over": ["还没结束", "先别开香槟", "还能抬回来"],
-  "win-hard": ["赢麻了", "收头了", "给你盖章"],
+  "win-hard": ["赢麻了", "双赢就是我赢两次", "给你盖章"],
 };
 
 const TYPE_LINES: Record<CardType, string[]> = {
-  Thesis: ["先定个调", "把框架抱走", "调门先起"],
-  Argument: ["证据拍脸", "论证顶上", "压力给足"],
-  Counter: ["先别结算", "反手打断", "这句不算"],
-  Label: ["先挂标签", "先定个性", "帽子扣上"],
-  Redirect: ["先改坐标", "话题拐了", "别往这答"],
-  Finisher: ["直接收头", "终局一拳", "现在盖章"],
+  Thesis: ["国家在下一盘很大的棋", "你品，你细品", "调门先起"],
+  Argument: ["2000人民币大于3000美元", "论证顶上", "懂的都懂"],
+  Counter: ["先问是不是，再问为什么", "反手打断", "这句不算"],
+  Label: ["先挂标签", "帽子扣上", "这下懂的都懂"],
+  Redirect: ["你要这么想，我也没办法", "话题拐了", "别往这答"],
+  Finisher: ["赢麻了", "双赢就是我赢两次", "现在盖章"],
 };
+
+const OUTCOME_LINES = {
+  victory: ["赢麻了", "双赢就是我赢两次", "这波属于遥遥领先"],
+  defeat: ["虽然输了但我没输", "你要这么想，我也没办法", "这叫战略性不赢"],
+} as const;
 
 const PHASE_LINES: Partial<Record<Phase, string>> = {
   "player-turn": "轮到你了",
@@ -319,7 +324,13 @@ class WinningAudioDirector {
       }
     }
 
-    this.speak(victory ? "赢麻了" : "这局寄了", 120, victory ? 1.08 : 0.92, victory ? 0.95 : 0.78, true);
+    this.speak(
+      choose(victory ? OUTCOME_LINES.victory : OUTCOME_LINES.defeat),
+      120,
+      victory ? 1.08 : 0.92,
+      victory ? 0.95 : 0.78,
+      true,
+    );
   }
 
   playActionBeat(beat: ActionBeat, delayMs = 0): void {
