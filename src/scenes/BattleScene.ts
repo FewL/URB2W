@@ -3,6 +3,17 @@ import { winningAudio } from "../audio/winningAudio";
 import { BattleEngine } from "../core/battleEngine";
 import type { ActionBeat, CardDefinition, CombatantState, EngineState } from "../core/types";
 import { CARD_LIBRARY, CARD_TYPES, ENCOUNTERS, KEYWORD_LABELS, STATUS_META } from "../data/gameData";
+import {
+  buildBeatFeedPulse,
+  buildEncounterFeed,
+  buildEncounterSplash,
+  buildOutcomeShowcase,
+  buildRewardShowcase,
+  type EncounterSplashData,
+  type FeedItem,
+  type OutcomeShowcase,
+  type RewardShowcase,
+} from "../data/showbiz";
 
 type DeltaSnapshot = {
   playerFace: number;
@@ -31,6 +42,15 @@ export class BattleScene extends Phaser.Scene {
   }> = [];
   private enemyTimer: Phaser.Time.TimerEvent | null = null;
   private lastPhase = "";
+  private hotTopics: string[] = [];
+  private liveComments: FeedItem[] = [];
+  private tickerLine = "";
+  private encounterSplash: EncounterSplashData | null = null;
+  private encounterSplashUntil = 0;
+  private lastEncounterKey = "";
+  private rewardShowcase: RewardShowcase | null = null;
+  private outcomeShowcase: OutcomeShowcase | null = null;
+  private feedSerial = 1;
 
   constructor() {
     super("battle");
@@ -38,6 +58,15 @@ export class BattleScene extends Phaser.Scene {
 
   init(data: { seed?: string }): void {
     this.engine.reset(data.seed ?? `${Date.now()}`);
+    this.hotTopics = [];
+    this.liveComments = [];
+    this.tickerLine = "";
+    this.encounterSplash = null;
+    this.encounterSplashUntil = 0;
+    this.lastEncounterKey = "";
+    this.rewardShowcase = null;
+    this.outcomeShowcase = null;
+    this.feedSerial = 1;
   }
 
   create(): void {
@@ -96,6 +125,7 @@ export class BattleScene extends Phaser.Scene {
       }
     });
 
+    this.syncShowbizState(this.engine.getSnapshot(), []);
     this.renderScene();
     this.scheduleEnemyIfNeeded();
   }
@@ -125,6 +155,7 @@ export class BattleScene extends Phaser.Scene {
     this.renderSidebar(1030, 116, 360, 720, state);
     this.renderTopButtons(state);
     this.renderOverlay(state);
+    this.renderEncounterSplash(state);
 
     if (this.lastPhase !== state.phase) {
       this.lastPhase = state.phase;
@@ -409,7 +440,7 @@ export class BattleScene extends Phaser.Scene {
     this.root.add(this.add.rectangle(x + width / 2, y + height / 2, width, height, 0x18121a, 0.98).setStrokeStyle(2, 0xffffff, 0.08));
 
     this.root.add(
-      this.add.text(x + 22, y + 18, "路线", {
+      this.add.text(x + 22, y + 18, "冲塔进度", {
         fontFamily: "Chivo, sans-serif",
         fontSize: "26px",
         fontStyle: "700",
@@ -417,66 +448,102 @@ export class BattleScene extends Phaser.Scene {
       }),
     );
     ENCOUNTERS.forEach((encounter, index) => {
-      const nodeY = y + 72 + index * 80;
+      const nodeY = y + 76 + index * 68;
       const active = index === state.run.encounterIndex;
       const cleared = state.run.cleared.includes(encounter.id);
       const fill = cleared ? 0x1c3628 : active ? 0x32231f : 0x241d25;
       const stroke = cleared ? 0x8bf3b5 : active ? 0xffab83 : 0xffffff;
-      const node = this.add.rectangle(x + width / 2, nodeY, width - 34, 64, fill, 0.95).setStrokeStyle(2, stroke, active || cleared ? 0.4 : 0.08);
+      const node = this.add.rectangle(x + width / 2, nodeY, width - 34, 56, fill, 0.95).setStrokeStyle(2, stroke, active || cleared ? 0.4 : 0.08);
       const title = this.add.text(x + 24, nodeY - 16, encounter.name, {
         fontFamily: "Chivo, sans-serif",
-        fontSize: "24px",
+        fontSize: "22px",
         fontStyle: "700",
         color: "#fff4ec",
       });
-      const role = this.add.text(x + 24, nodeY + 10, encounter.role, {
+      const role = this.add.text(x + 24, nodeY + 8, encounter.role, {
         fontFamily: "Space Grotesk, sans-serif",
-        fontSize: "17px",
+        fontSize: "15px",
         color: "#c4b7af",
       });
       this.root.add([node, title, role]);
     });
 
-    const notesY = y + 410;
+    const topicsY = y + 330;
     this.root.add(
-      this.add.text(x + 22, notesY, "规则 / 说明", {
+      this.add.text(x + 22, topicsY, "假热搜榜", {
         fontFamily: "Chivo, sans-serif",
         fontSize: "26px",
         fontStyle: "700",
         color: "#fff4ec",
       }),
     );
-    const ruleLines = [
-      ...state.battle!.battlefield.rules.map((rule) => `场地：${rule}`),
-      ...state.demoNotes.map((note) => `Demo：${note}`),
-    ];
-    ruleLines.forEach((line, index) => {
-      const boxY = notesY + 52 + index * 56;
-      const box = this.add.rectangle(x + width / 2, boxY, width - 34, 48, 0x241d25, 0.85).setStrokeStyle(1, 0xffffff, 0.06);
-      const text = this.add.text(x + 22, boxY - 13, line, {
+    this.hotTopics.slice(0, 3).forEach((topic, index) => {
+      const boxY = topicsY + 50 + index * 40;
+      const box = this.add.rectangle(x + width / 2, boxY, width - 34, 32, 0x2d2224, 0.94).setStrokeStyle(1, 0xff935e, 0.14);
+      const rank = this.add.text(x + 22, boxY - 11, `${index + 1}`, {
+        fontFamily: "Chivo, sans-serif",
+        fontSize: "16px",
+        fontStyle: "700",
+        color: "#ffb589",
+      });
+      const text = this.add.text(x + 52, boxY - 11, topic, {
         fontFamily: "Space Grotesk, sans-serif",
         fontSize: "15px",
-        color: "#d4c5bc",
-        wordWrap: { width: width - 56 },
+        color: "#f4ddd1",
+        wordWrap: { width: width - 82 },
       });
-      this.root.add([box, text]);
+      this.root.add([box, rank, text]);
     });
 
-    const logTitleY = y + height - 222;
+    const tickerY = y + 474;
     this.root.add(
-      this.add.text(x + 22, logTitleY, "战报", {
+      this.add.text(x + 22, tickerY, "现场播报", {
         fontFamily: "Chivo, sans-serif",
         fontSize: "26px",
         fontStyle: "700",
         color: "#fff4ec",
       }),
     );
-    state.log.slice(0, 5).forEach((entry, index) => {
-      const logY = logTitleY + 48 + index * 34;
-      const text = this.add.text(x + 24, logY, `· ${entry.message}`, {
+    const tickerBox = this.add.rectangle(x + width / 2, tickerY + 56, width - 34, 64, 0x231c1f, 0.92).setStrokeStyle(1, 0xffffff, 0.08);
+    const liveDot = this.add.circle(x + 28, tickerY + 38, 5, 0xff6e52, 1);
+    const liveLabel = this.add.text(x + 42, tickerY + 28, "正在刷屏", {
+      fontFamily: "Chivo, sans-serif",
+      fontSize: "15px",
+      fontStyle: "700",
+      color: "#ffb28d",
+    });
+    const tickerText = this.add.text(x + 22, tickerY + 48, this.tickerLine || state.log[0]?.message || "围观群众正在加载新角度。", {
+      fontFamily: "Space Grotesk, sans-serif",
+      fontSize: "15px",
+      color: "#f2ddd4",
+      wordWrap: { width: width - 56 },
+      lineSpacing: 4,
+    });
+    this.root.add([tickerBox, liveDot, liveLabel, tickerText]);
+
+    const commentsTitleY = y + 582;
+    this.root.add(
+      this.add.text(x + 22, commentsTitleY, "路人弹幕", {
+        fontFamily: "Chivo, sans-serif",
+        fontSize: "26px",
+        fontStyle: "700",
+        color: "#fff4ec",
+      }),
+    );
+    this.liveComments.slice(0, 4).forEach((entry, index) => {
+      const commentY = commentsTitleY + 42 + index * 34;
+      const toneColor =
+        entry.tone === "alert"
+          ? "#ffd6a9"
+          : entry.tone === "meltdown"
+            ? "#ffb5b5"
+            : entry.tone === "hype"
+              ? "#bde8ff"
+              : "#d7c7ff";
+      const text = this.add.text(x + 24, commentY, `> ${entry.text}`, {
         fontFamily: "Space Grotesk, sans-serif",
-        fontSize: "15px",
-        color: index === 0 ? "#fff1e9" : "#b7aaa1",
+        fontSize: "14px",
+        color: toneColor,
         wordWrap: { width: width - 54 },
       });
       this.root.add(text);
@@ -530,28 +597,52 @@ export class BattleScene extends Phaser.Scene {
     this.overlayLayer.add(this.add.rectangle(720, 450, 1440, 900, 0x0f0b10, 0.72));
 
     if (state.phase === "reward") {
-      const title = this.add.text(720, 188, "战后加卡", {
+      const showcase = this.rewardShowcase ?? buildRewardShowcase(state, this.feedSerial++);
+      this.rewardShowcase = showcase;
+      this.overlayLayer.add(this.add.rectangle(720, 116, 1110, 46, 0x2c201f, 0.96).setStrokeStyle(1, 0xffa974, 0.22));
+      this.overlayLayer.add(
+        this.add.text(720, 116, showcase.ticker, {
+          fontFamily: "Space Grotesk, sans-serif",
+          fontSize: "18px",
+          color: "#ffe1c9",
+        }).setOrigin(0.5),
+      );
+      const strap = this.add.text(720, 178, showcase.strapline, {
         fontFamily: "Chivo, sans-serif",
-        fontSize: "52px",
+        fontSize: "18px",
+        fontStyle: "700",
+        color: "#ffb684",
+        letterSpacing: 2,
+      }).setOrigin(0.5);
+      const title = this.add.text(720, 222, showcase.title, {
+        fontFamily: "Chivo, sans-serif",
+        fontSize: "58px",
         fontStyle: "700",
         color: "#fff4ec",
       }).setOrigin(0.5);
-      const subtitle = this.add.text(720, 246, "选 1 张加入牌组，然后继续推进整条 run。", {
+      const subtitle = this.add.text(720, 284, showcase.subtitle, {
         fontFamily: "Space Grotesk, sans-serif",
-        fontSize: "24px",
+        fontSize: "22px",
         color: "#d6c6bc",
+        wordWrap: { width: 960 },
+        align: "center",
       }).setOrigin(0.5);
-      this.overlayLayer.add([title, subtitle]);
+      this.overlayLayer.add([strap, title, subtitle]);
+
+      showcase.topics.forEach((topic, index) => {
+        const chip = this.makeChip(472 + index * 248, 338, 224, 32, topic, 0x2b1e25, "#ffd3ba");
+        this.overlayLayer.add(chip);
+      });
 
       state.rewardOptions.forEach((cardId, index) => {
         const definition = CARD_LIBRARY[cardId];
-        const card = this.createCardNode(452 + index * 270, 500, 220, 246, definition, true, false);
+        const card = this.createCardNode(452 + index * 270, 532, 220, 246, definition, true, false);
         card.setInteractive(new Phaser.Geom.Rectangle(-110, -123, 220, 246), Phaser.Geom.Rectangle.Contains);
         card.on("pointerover", () => {
-          this.tweens.add({ targets: card, y: 484, duration: 120 });
+          this.tweens.add({ targets: card, y: 516, duration: 120 });
         });
         card.on("pointerout", () => {
-          this.tweens.add({ targets: card, y: 500, duration: 120 });
+          this.tweens.add({ targets: card, y: 532, duration: 120 });
         });
         card.on("pointerdown", () => {
           this.performAction(() => {
@@ -564,32 +655,141 @@ export class BattleScene extends Phaser.Scene {
     }
 
     const isVictory = state.phase === "run-victory";
-    const title = this.add.text(720, 310, isVictory ? "赢麻了" : "场面站不住了", {
+    const showcase = this.outcomeShowcase ?? buildOutcomeShowcase(state, this.feedSerial++);
+    this.outcomeShowcase = showcase;
+    const strap = this.add.text(720, 140, showcase.strapline, {
       fontFamily: "Chivo, sans-serif",
-      fontSize: "88px",
+      fontSize: "18px",
+      fontStyle: "700",
+      color: isVictory ? "#ffc680" : "#ffaea3",
+      letterSpacing: 2,
+    }).setOrigin(0.5);
+    const ticker = this.add.rectangle(720, 186, 1110, 44, isVictory ? 0x2b2419 : 0x351f20, 0.96).setStrokeStyle(1, 0xffffff, 0.12);
+    const tickerText = this.add.text(720, 186, showcase.ticker, {
+      fontFamily: "Space Grotesk, sans-serif",
+      fontSize: "17px",
+      color: "#f7e6da",
+    }).setOrigin(0.5);
+    const title = this.add.text(720, 274, showcase.title, {
+      fontFamily: "Chivo, sans-serif",
+      fontSize: "62px",
       fontStyle: "900",
       color: isVictory ? "#ffd29a" : "#ffb7a3",
+      wordWrap: { width: 1040 },
+      align: "center",
     }).setOrigin(0.5);
     const subtitle = this.add.text(
       720,
-      410,
-      isVictory
-        ? "精神胜利王已经倒了。这是一整条可打通的浏览器 run。"
-        : "这次被对线打穿了。重开再构筑，继续验证这套系统。",
+      352,
+      showcase.subtitle,
       {
         fontFamily: "Space Grotesk, sans-serif",
-        fontSize: "28px",
+        fontSize: "24px",
         color: "#f4e9e3",
-        wordWrap: { width: 880 },
+        wordWrap: { width: 960 },
         align: "center",
       },
     ).setOrigin(0.5);
-    this.overlayLayer.add([title, subtitle]);
+    this.overlayLayer.add([strap, ticker, tickerText, title, subtitle]);
 
-    const button = this.createButton(720, 540, 244, 74, "再来一局", true, () => {
+    showcase.topics.forEach((topic, index) => {
+      this.overlayLayer.add(this.makeChip(402 + index * 318, 430, 288, 32, topic, 0x2d2224, isVictory ? "#ffd8ab" : "#ffc0b8"));
+    });
+
+    const leftBox = this.add.rectangle(420, 570, 360, 220, isVictory ? 0x1f241d : 0x2a1c1e, 0.95).setStrokeStyle(1, 0xffffff, 0.08);
+    const rightBox = this.add.rectangle(1018, 570, 480, 220, 0x201920, 0.95).setStrokeStyle(1, 0xffffff, 0.08);
+    const leftTitle = this.add.text(256, 474, "复盘数据", {
+      fontFamily: "Chivo, sans-serif",
+      fontSize: "24px",
+      fontStyle: "700",
+      color: "#fff4ec",
+    });
+    const rightTitle = this.add.text(790, 474, "高赞弹幕", {
+      fontFamily: "Chivo, sans-serif",
+      fontSize: "24px",
+      fontStyle: "700",
+      color: "#fff4ec",
+    });
+    this.overlayLayer.add([leftBox, rightBox, leftTitle, rightTitle]);
+
+    showcase.stats.forEach((stat, index) => {
+      const row = this.add.text(268, 522 + index * 42, `· ${stat}`, {
+        fontFamily: "Space Grotesk, sans-serif",
+        fontSize: "18px",
+        color: "#f3e7dd",
+      });
+      this.overlayLayer.add(row);
+    });
+
+    showcase.comments.forEach((entry, index) => {
+      const color =
+        entry.tone === "alert"
+          ? "#ffd0a6"
+          : entry.tone === "meltdown"
+            ? "#ffb4b4"
+            : entry.tone === "hype"
+              ? "#b8ebff"
+              : "#dfccff";
+      const row = this.add.text(808, 518 + index * 48, `> ${entry.text}`, {
+        fontFamily: "Space Grotesk, sans-serif",
+        fontSize: "17px",
+        color,
+        wordWrap: { width: 410 },
+      });
+      this.overlayLayer.add(row);
+    });
+
+    const button = this.createButton(720, 732, 244, 74, "再来一局", true, () => {
       this.scene.start("battle", { seed: `${Date.now()}-${Math.floor(Math.random() * 100000)}` });
     }, isVictory ? 0xffb45a : 0xff7a53, 0x120d12);
     this.overlayLayer.add(button);
+  }
+
+  private renderEncounterSplash(state: EngineState): void {
+    if (!this.encounterSplash || this.time.now >= this.encounterSplashUntil) {
+      return;
+    }
+    if (state.phase === "reward" || state.phase === "run-victory" || state.phase === "run-defeat") {
+      return;
+    }
+
+    const progress = 1 - (this.encounterSplashUntil - this.time.now) / 1800;
+    const alpha = progress < 0.16 ? progress / 0.16 : progress > 0.82 ? (1 - progress) / 0.18 : 1;
+    const offsetY = progress < 0.2 ? (0.2 - progress) * 80 : progress > 0.8 ? (progress - 0.8) * 90 : 0;
+    const frame = this.add.rectangle(720, 232 + offsetY, 1040, 188, 0x18121a, 0.94).setStrokeStyle(2, 0xff935a, 0.28);
+    const glow = this.add.ellipse(720, 232 + offsetY, 980, 154, 0xff7d56, 0.08);
+    const strap = this.add.text(720, 174 + offsetY, this.encounterSplash.strapline, {
+      fontFamily: "Chivo, sans-serif",
+      fontSize: "17px",
+      fontStyle: "700",
+      color: "#ffbb8a",
+      letterSpacing: 2,
+    }).setOrigin(0.5);
+    const title = this.add.text(720, 220 + offsetY, this.encounterSplash.title, {
+      fontFamily: "Chivo, sans-serif",
+      fontSize: "46px",
+      fontStyle: "900",
+      color: "#fff6ef",
+      wordWrap: { width: 920 },
+      align: "center",
+    }).setOrigin(0.5);
+    const subtitle = this.add.text(720, 270 + offsetY, this.encounterSplash.subtitle, {
+      fontFamily: "Space Grotesk, sans-serif",
+      fontSize: "19px",
+      color: "#e7d7ce",
+      wordWrap: { width: 900 },
+      align: "center",
+    }).setOrigin(0.5);
+    [glow, frame, strap, title, subtitle].forEach((node) => {
+      node.setAlpha(alpha);
+      this.overlayLayer.add(node);
+    });
+
+    this.encounterSplash.tags.forEach((tag, index) => {
+      const chip = this.makeChip(514 + index * 206, 320 + offsetY, 186, 28, tag, 0x291d23, "#ffd8bf");
+      chip.setAlpha(alpha);
+      this.overlayLayer.add(chip);
+    });
   }
 
   private createButton(
@@ -672,8 +872,11 @@ export class BattleScene extends Phaser.Scene {
   private performAction(action: () => void): void {
     const before = this.captureDelta();
     action();
+    const state = this.engine.getSnapshot();
+    const newBeats = state.actionQueue.slice(before.actionCount);
+    this.syncShowbizState(state, newBeats);
     this.renderScene();
-    this.animateDelta(before);
+    this.animateDelta(before, newBeats);
     this.scheduleEnemyIfNeeded();
   }
 
@@ -707,7 +910,7 @@ export class BattleScene extends Phaser.Scene {
     };
   }
 
-  private animateDelta(before: DeltaSnapshot): void {
+  private animateDelta(before: DeltaSnapshot, newBeats: ActionBeat[]): void {
     const state = this.engine.getSnapshot();
     const battle = state.battle!;
 
@@ -748,7 +951,7 @@ export class BattleScene extends Phaser.Scene {
       spawnFloat(520, 334, `${diff > 0 ? "+" : ""}${diff} 舆论`, diff > 0 ? "#79ddff" : "#ff9d86");
     }
 
-    state.actionQueue.slice(before.actionCount).forEach((beat, index) => {
+    newBeats.forEach((beat, index) => {
       winningAudio.playActionBeat(beat, index * 180);
       this.showActionBeat(beat, index * 180);
     });
@@ -883,11 +1086,68 @@ export class BattleScene extends Phaser.Scene {
     }
   }
 
+  private syncShowbizState(state: EngineState, newBeats: ActionBeat[]): void {
+    const battle = state.battle;
+    if (!battle) {
+      return;
+    }
+
+    const encounterKey = `${state.run.encounterIndex}:${battle.encounter.id}`;
+    if (encounterKey !== this.lastEncounterKey) {
+      this.lastEncounterKey = encounterKey;
+      this.encounterSplash = buildEncounterSplash(battle.encounter, battle.battlefield, this.feedSerial);
+      this.encounterSplashUntil = this.time.now + 1800;
+      const seedFeed = buildEncounterFeed(battle.encounter, battle.battlefield, this.feedSerial);
+      this.feedSerial += 1;
+      this.hotTopics = seedFeed.topics;
+      this.liveComments = seedFeed.comments;
+      this.tickerLine = seedFeed.ticker;
+      this.rewardShowcase = null;
+      this.outcomeShowcase = null;
+      winningAudio.playNewsSting();
+    }
+
+    newBeats.forEach((beat) => {
+      const pulse = buildBeatFeedPulse(state, beat, this.feedSerial, this.hotTopics);
+      this.feedSerial += 1;
+      this.hotTopics = pulse.topics;
+      this.liveComments = [...pulse.comments, ...this.liveComments].slice(0, 6);
+      this.tickerLine = pulse.ticker;
+      winningAudio.playFeedPulse(
+        beat.cardType === "Finisher" ? "alert" : beat.mode === "response" ? "snark" : beat.cardType === "Label" ? "meltdown" : "hype",
+      );
+    });
+
+    if (state.phase === "reward") {
+      if (!this.rewardShowcase) {
+        this.rewardShowcase = buildRewardShowcase(state, this.feedSerial);
+        this.feedSerial += 1;
+        this.hotTopics = this.rewardShowcase.topics;
+        this.tickerLine = this.rewardShowcase.ticker;
+        winningAudio.playNewsSting();
+      }
+    } else {
+      this.rewardShowcase = null;
+    }
+
+    if (state.phase === "run-victory" || state.phase === "run-defeat") {
+      if (!this.outcomeShowcase) {
+        this.outcomeShowcase = buildOutcomeShowcase(state, this.feedSerial);
+        this.feedSerial += 1;
+        this.hotTopics = this.outcomeShowcase.topics;
+        this.liveComments = this.outcomeShowcase.comments;
+        this.tickerLine = this.outcomeShowcase.ticker;
+      }
+    } else {
+      this.outcomeShowcase = null;
+    }
+  }
+
   private actionBeatLabel(beat: ActionBeat): string {
     if (beat.mode === "response") {
-      return beat.side === "player" ? "PLAYER RESPONSE" : "ENEMY RESPONSE";
+      return beat.side === "player" ? "你当场回嘴" : "对面临场插话";
     }
-    return beat.side === "player" ? "PLAYER PLAY" : "ENEMY PLAY";
+    return beat.side === "player" ? "你这边甩牌" : "对面开始整活";
   }
 
   private actionTone(beat: ActionBeat): {
@@ -996,17 +1256,17 @@ export class BattleScene extends Phaser.Scene {
   private phaseLabel(phase: EngineState["phase"]): string {
     switch (phase) {
       case "player-turn":
-        return "你的回合";
+        return "轮到你发力";
       case "enemy-turn":
-        return "对手回合";
+        return "对面开始整活";
       case "response-window":
-        return "回应窗口";
+        return "现在接不接";
       case "reward":
-        return "战后加卡";
+        return "趁热补牌";
       case "run-victory":
-        return "整条线打通";
+        return "整条线拿下";
       case "run-defeat":
-        return "这局寄了";
+        return "这把寄了";
       default:
         return phase;
     }
@@ -1016,17 +1276,17 @@ export class BattleScene extends Phaser.Scene {
     const player = state.battle!.player;
     switch (state.phase) {
       case "player-turn":
-        return `你有 ${player.momentum} 点气势，继续压强度。`;
+        return `你手上还有 ${player.momentum} 点气势，想压强度就现在。`;
       case "response-window":
-        return `敌方正在结算【${state.battle!.pendingAction?.card.name ?? ""}】，接或不接。`;
+        return `对面正在结算【${state.battle!.pendingAction?.card.name ?? ""}】，现在接这波还是装没看见。`;
       case "reward":
-        return "右侧收尾，中央选牌。";
+        return "牌已经摆出来了，挑一张继续把节目做大。";
       case "run-victory":
-        return "Boss 已倒，整条 run 通关。";
+        return "Boss 已经倒了，今天这条线算你说了算。";
       case "run-defeat":
-        return "这次对线被打穿了。";
+        return "这把被做成切片了，重开再来。";
       default:
-        return "对手正在操作。";
+        return "对面正在上活，先看它怎么演。";
     }
   }
 }

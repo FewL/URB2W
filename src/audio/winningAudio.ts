@@ -1,4 +1,5 @@
 import type { ActionBeat, CardType, Phase } from "../core/types";
+import type { FeedTone } from "../data/showbiz";
 
 type TrackName = "title" | "battle";
 
@@ -218,6 +219,59 @@ class WinningAudioDirector {
     this.playKick(now, 0.1, 78);
     this.playTone(this.sfxGain!, now, midiToFrequency(72), 0.15, 0.06, "square", {
       attack: 0.01,
+      endFrequency: midiToFrequency(79),
+    });
+  }
+
+  playNewsSting(): void {
+    if (!this.isSfxReady()) {
+      return;
+    }
+    const now = this.context!.currentTime + 0.01;
+    this.playNoiseBurst(this.sfxGain!, now, 0.03, 0.04, "highpass", 4200);
+    this.playTone(this.sfxGain!, now, midiToFrequency(76), 0.09, 0.05, "triangle", {
+      attack: 0.006,
+      endFrequency: midiToFrequency(81),
+    });
+    this.playTone(this.sfxGain!, now + 0.08, midiToFrequency(83), 0.14, 0.045, "square", {
+      attack: 0.01,
+      endFrequency: midiToFrequency(88),
+    });
+  }
+
+  playFeedPulse(tone: FeedTone): void {
+    if (!this.isSfxReady()) {
+      return;
+    }
+    const now = this.context!.currentTime + 0.01;
+    if (tone === "alert") {
+      this.playNoiseBurst(this.sfxGain!, now, 0.04, 0.045, "bandpass", 1800);
+      this.playTone(this.sfxGain!, now, midiToFrequency(69), 0.12, 0.06, "sawtooth", {
+        attack: 0.008,
+        endFrequency: midiToFrequency(76),
+      });
+      return;
+    }
+    if (tone === "meltdown") {
+      this.playTone(this.sfxGain!, now, midiToFrequency(59), 0.12, 0.05, "square", {
+        attack: 0.006,
+        endFrequency: midiToFrequency(52),
+      });
+      this.playNoiseBurst(this.sfxGain!, now + 0.02, 0.03, 0.03, "lowpass", 1200);
+      return;
+    }
+    if (tone === "snark") {
+      this.playTone(this.sfxGain!, now, midiToFrequency(78), 0.08, 0.04, "triangle", {
+        attack: 0.005,
+        endFrequency: midiToFrequency(74),
+      });
+      this.playTone(this.sfxGain!, now + 0.05, midiToFrequency(73), 0.08, 0.03, "triangle", {
+        attack: 0.005,
+      });
+      return;
+    }
+    this.playTone(this.sfxGain!, now, midiToFrequency(72), 0.1, 0.042, "square", {
+      attack: 0.008,
       endFrequency: midiToFrequency(79),
     });
   }
