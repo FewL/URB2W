@@ -191,13 +191,13 @@ const OUTCOME_LINES = {
 } as const;
 
 const STATUS_LINES: Record<StatusId, readonly string[]> = {
-  urgent: ["急了"],
-  doubleStandard: ["双标"],
-  stubborn: ["嘴硬"],
-  speechless: ["失语了"],
-  mainNarrative: ["主叙事"],
-  labeled: ["挂标签了"],
-  lastWord: ["还没结束"],
+  urgent: ["急了急了急了"],
+  doubleStandard: ["经典双标，鉴定完毕"],
+  stubborn: ["嘴硬王者，永不认输"],
+  speechless: ["彻底失语，无话可说"],
+  mainNarrative: ["主叙事已占领"],
+  labeled: ["标签已挂上，撕不掉"],
+  lastWord: ["还没结束，等着"],
 };
 
 const PHASE_LINES: Partial<Record<Phase, string>> = {
