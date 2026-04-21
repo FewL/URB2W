@@ -473,7 +473,7 @@ class WinningAudioDirector {
     if (this.settings.sfxEnabled) {
       this.runLater(delayMs, () => this.playActionBeatNow(beat));
     }
-    const extraDelay = beat.cardType === "Finisher" ? 80 : 150;
+    const extraDelay = beat.mode === "response" ? 60 : beat.cardType === "Finisher" ? 70 : 95;
     this.speak(
       this.voiceLineForBeat(beat),
       delayMs + extraDelay,

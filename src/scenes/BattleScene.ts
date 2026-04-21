@@ -33,6 +33,9 @@ export class BattleScene extends Phaser.Scene {
   private root!: Phaser.GameObjects.Container;
   private overlayLayer!: Phaser.GameObjects.Container;
   private phaseBanner!: Phaser.GameObjects.Text;
+  private inputLockUntil = 0;
+  private inputUnlockTimer: Phaser.Time.TimerEvent | null = null;
+  private enemyActionDelayMs = 780;
   private backgroundOrbs: Array<{
     circle: Phaser.GameObjects.Arc;
     baseX: number;
@@ -60,6 +63,9 @@ export class BattleScene extends Phaser.Scene {
 
   init(data: { seed?: string }): void {
     this.engine.reset(data.seed ?? `${Date.now()}`);
+    this.inputLockUntil = 0;
+    this.inputUnlockTimer = null;
+    this.enemyActionDelayMs = 780;
     this.hotTopics = [];
     this.liveComments = [];
     this.tickerLine = "";
@@ -353,7 +359,7 @@ export class BattleScene extends Phaser.Scene {
         state.battle!.player,
         instance.definition,
         state.phase === "response-window" ? "response" : "normal",
-      );
+      ) && !this.controlsLocked();
       const cardX =
         visibleCards === 1 ? x + width / 2 : startX + index * spacing;
       const cardY = y + 134;
@@ -367,6 +373,9 @@ export class BattleScene extends Phaser.Scene {
           this.tweens.add({ targets: card, y: cardY, duration: 120 });
         });
         card.on("pointerdown", () => {
+          if (this.controlsLocked()) {
+            return;
+          }
           this.tweens.add({
             targets: card,
             y: cardY - 30,
@@ -561,7 +570,8 @@ export class BattleScene extends Phaser.Scene {
   private renderTopButtons(state: EngineState): void {
     const audioState = winningAudio.getState();
     const turnButtonLabel = state.phase === "response-window" ? "不回应" : "结束回合";
-    const turnButtonEnabled = state.phase === "player-turn" || state.phase === "response-window";
+    const turnButtonEnabled =
+      (state.phase === "player-turn" || state.phase === "response-window") && !this.controlsLocked();
 
     const turnButton = this.createButton(1090, 54, 148, 46, turnButtonLabel, turnButtonEnabled, () => {
       this.performAction(() => {
@@ -830,6 +840,9 @@ export class BattleScene extends Phaser.Scene {
         this.tweens.add({ targets: container, scaleX: 1, scaleY: 1, duration: 120 });
       });
       container.on("pointerdown", () => {
+        if (this.controlsLocked() && label !== "重新开局") {
+          return;
+        }
         winningAudio.unlock();
         winningAudio.playUiConfirm();
         onClick();
@@ -895,7 +908,13 @@ export class BattleScene extends Phaser.Scene {
     }
     const state = this.engine.getSnapshot();
     if (state.phase === "enemy-turn") {
-      this.enemyTimer = this.time.delayedCall(780, () => {
+      const delay = Math.max(
+        780,
+        this.enemyActionDelayMs,
+        Math.max(0, Math.ceil(this.inputLockUntil - this.time.now)),
+      );
+      this.enemyTimer = this.time.delayedCall(delay, () => {
+        this.enemyActionDelayMs = 780;
         this.performAction(() => {
           this.engine.enemyTakeStep();
         });
@@ -974,13 +993,26 @@ export class BattleScene extends Phaser.Scene {
 
     const enemyStatuses = collectAppliedStatuses(before.enemyStatuses, battle.enemy.statuses);
     const playerStatuses = collectAppliedStatuses(before.playerStatuses, battle.player.statuses);
-    const statusDelayBase = newBeats.length * 180 + 980;
+    const statusDelayBase = newBeats.length * 180 + 560;
     enemyStatuses.forEach((statusId, index) => {
       winningAudio.playStatusLine(statusId, "enemy", statusDelayBase + index * 980);
     });
     playerStatuses.forEach((statusId, index) => {
       winningAudio.playStatusLine(statusId, "player", statusDelayBase + (enemyStatuses.length + index) * 980);
     });
+
+    const presentationDelay =
+      newBeats.length > 0
+        ? 760 +
+          Math.max(0, newBeats.length - 1) * 260 +
+          (newBeats.some((beat) => beat.mode === "response") ? 180 : 0) +
+          (newBeats.some((beat) => beat.cardType === "Finisher") ? 140 : 0) +
+          (enemyStatuses.length + playerStatuses.length) * 120
+        : 0;
+    if (presentationDelay > 0) {
+      this.enemyActionDelayMs = Math.max(this.enemyActionDelayMs, presentationDelay);
+      this.extendInputLock(presentationDelay);
+    }
   }
 
   private shouldSpeakPhaseChange(previousPhase: string, nextPhase: string): boolean {
@@ -991,6 +1023,26 @@ export class BattleScene extends Phaser.Scene {
       return false;
     }
     return true;
+  }
+
+  private controlsLocked(): boolean {
+    return this.time.now < this.inputLockUntil;
+  }
+
+  private extendInputLock(durationMs: number): void {
+    const nextUntil = this.time.now + durationMs;
+    if (nextUntil <= this.inputLockUntil) {
+      return;
+    }
+    this.inputLockUntil = nextUntil;
+    if (this.inputUnlockTimer) {
+      this.inputUnlockTimer.remove(false);
+    }
+    this.inputUnlockTimer = this.time.delayedCall(durationMs, () => {
+      this.inputUnlockTimer = null;
+      this.renderScene();
+      this.scheduleEnemyIfNeeded();
+    });
   }
 
   private showActionBeat(beat: ActionBeat, delay: number): void {
