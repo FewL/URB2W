@@ -235,7 +235,6 @@ class WinningAudioDirector {
     sfxEnabled: true,
     voiceEnabled: true,
   };
-  private lastVoiceTime = 0;
   private speechQueueUntil = 0;
 
   constructor() {
@@ -590,7 +589,6 @@ class WinningAudioDirector {
     const scheduledAt = force
       ? targetAt
       : Math.max(targetAt, this.speechQueueUntil > now ? this.speechQueueUntil + queueGapMs : targetAt);
-    this.lastVoiceTime = scheduledAt;
     this.speechQueueUntil = scheduledAt + estimatedDurationMs;
 
     this.runLater(Math.max(0, scheduledAt - now), () => {
