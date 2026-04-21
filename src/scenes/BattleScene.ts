@@ -986,32 +986,37 @@ export class BattleScene extends Phaser.Scene {
       spawnFloat(520, 334, `${diff > 0 ? "+" : ""}${diff} 舆论`, diff > 0 ? "#79ddff" : "#ff9d86");
     }
 
+    let presentationDelay = 0;
     newBeats.forEach((beat, index) => {
-      winningAudio.playActionBeat(beat, index * 180);
+      const beatDelay = index * 150;
+      presentationDelay = Math.max(presentationDelay, winningAudio.playActionBeat(beat, beatDelay));
       this.showActionBeat(beat, index * 180);
     });
 
     const enemyStatuses = collectAppliedStatuses(before.enemyStatuses, battle.enemy.statuses);
     const playerStatuses = collectAppliedStatuses(before.playerStatuses, battle.player.statuses);
-    const statusDelayBase = newBeats.length * 180 + 560;
+    const statusDelayBase = Math.max(420, presentationDelay > 0 ? presentationDelay - 180 : 520);
     enemyStatuses.forEach((statusId, index) => {
-      winningAudio.playStatusLine(statusId, "enemy", statusDelayBase + index * 980);
+      presentationDelay = Math.max(
+        presentationDelay,
+        winningAudio.playStatusLine(statusId, "enemy", statusDelayBase + index * 120),
+      );
     });
     playerStatuses.forEach((statusId, index) => {
-      winningAudio.playStatusLine(statusId, "player", statusDelayBase + (enemyStatuses.length + index) * 980);
+      presentationDelay = Math.max(
+        presentationDelay,
+        winningAudio.playStatusLine(
+          statusId,
+          "player",
+          statusDelayBase + (enemyStatuses.length + index) * 120,
+        ),
+      );
     });
 
-    const presentationDelay =
-      newBeats.length > 0
-        ? 760 +
-          Math.max(0, newBeats.length - 1) * 260 +
-          (newBeats.some((beat) => beat.mode === "response") ? 180 : 0) +
-          (newBeats.some((beat) => beat.cardType === "Finisher") ? 140 : 0) +
-          (enemyStatuses.length + playerStatuses.length) * 120
-        : 0;
     if (presentationDelay > 0) {
-      this.enemyActionDelayMs = Math.max(this.enemyActionDelayMs, presentationDelay);
-      this.extendInputLock(presentationDelay);
+      const holdMs = Math.max(640, Math.ceil(presentationDelay + 120));
+      this.enemyActionDelayMs = Math.max(this.enemyActionDelayMs, holdMs);
+      this.extendInputLock(holdMs);
     }
   }
 

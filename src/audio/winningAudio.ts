@@ -236,6 +236,7 @@ class WinningAudioDirector {
     voiceEnabled: true,
   };
   private lastVoiceTime = 0;
+  private speechQueueUntil = 0;
 
   constructor() {
     this.settings = this.loadSettings();
@@ -306,6 +307,7 @@ class WinningAudioDirector {
     this.persistSettings();
     if (!this.settings.voiceEnabled && hasWindow() && "speechSynthesis" in window) {
       window.speechSynthesis.cancel();
+      this.speechQueueUntil = 0;
     }
     return this.settings.voiceEnabled;
   }
@@ -410,7 +412,7 @@ class WinningAudioDirector {
     }
   }
 
-  playOutcome(victory: boolean): void {
+  playOutcome(victory: boolean): number {
     if (this.isSfxReady()) {
       const now = this.context!.currentTime + 0.02;
       if (victory) {
@@ -432,7 +434,7 @@ class WinningAudioDirector {
       }
     }
 
-    this.speak(
+    return this.speak(
       choose(victory ? OUTCOME_LINES.victory : OUTCOME_LINES.defeat),
       120,
       victory ? 1.08 : 0.92,
@@ -445,12 +447,12 @@ class WinningAudioDirector {
     );
   }
 
-  playStatusLine(statusId: StatusId, side: Side, delayMs = 0): void {
+  playStatusLine(statusId: StatusId, side: Side, delayMs = 0): number {
     const lines = STATUS_LINES[statusId];
     if (!lines || lines.length === 0) {
-      return;
+      return 0;
     }
-    this.speak(
+    return this.speak(
       choose(lines),
       delayMs,
       side === "enemy" ? 0.88 : 1.02,
@@ -469,12 +471,12 @@ class WinningAudioDirector {
     );
   }
 
-  playActionBeat(beat: ActionBeat, delayMs = 0): void {
+  playActionBeat(beat: ActionBeat, delayMs = 0): number {
     if (this.settings.sfxEnabled) {
       this.runLater(delayMs, () => this.playActionBeatNow(beat));
     }
     const extraDelay = beat.mode === "response" ? 60 : beat.cardType === "Finisher" ? 70 : 95;
-    this.speak(
+    return this.speak(
       this.voiceLineForBeat(beat),
       delayMs + extraDelay,
       beat.side === "player"
@@ -576,19 +578,22 @@ class WinningAudioDirector {
       speaker?: SpeechSpeaker;
       minGapMs?: number;
     } = {},
-  ): void {
+  ): number {
     if (!this.settings.voiceEnabled || !hasWindow() || !("speechSynthesis" in window)) {
-      return;
+      return 0;
     }
 
-    const targetAt = performance.now() + delayMs;
-    const minGapMs = options.minGapMs ?? 900;
-    if (!force && targetAt - this.lastVoiceTime < minGapMs) {
-      return;
-    }
-    this.lastVoiceTime = targetAt;
+    const now = performance.now();
+    const targetAt = now + delayMs;
+    const queueGapMs = options.minGapMs ?? 120;
+    const estimatedDurationMs = this.estimateSpeechDuration(text, rate);
+    const scheduledAt = force
+      ? targetAt
+      : Math.max(targetAt, this.speechQueueUntil > now ? this.speechQueueUntil + queueGapMs : targetAt);
+    this.lastVoiceTime = scheduledAt;
+    this.speechQueueUntil = scheduledAt + estimatedDurationMs;
 
-    this.runLater(delayMs, () => {
+    this.runLater(Math.max(0, scheduledAt - now), () => {
       if (!this.settings.voiceEnabled || !("speechSynthesis" in window)) {
         return;
       }
@@ -607,6 +612,15 @@ class WinningAudioDirector {
       }
       synth.speak(utterance);
     });
+    return Math.max(0, scheduledAt - now) + estimatedDurationMs;
+  }
+
+  private estimateSpeechDuration(text: string, rate: number): number {
+    const normalizedRate = clamp(rate, 0.72, 1.22);
+    const punctuationWeight = (text.match(/[，。！？、,.!?]/g) ?? []).length * 90;
+    const base = 340;
+    const perChar = 165;
+    return Math.max(520, Math.round((base + text.length * perChar + punctuationWeight) / normalizedRate));
   }
 
   private selectVoice(
