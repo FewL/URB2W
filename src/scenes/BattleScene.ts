@@ -165,11 +165,12 @@ export class BattleScene extends Phaser.Scene {
     this.renderEncounterSplash(state);
 
     if (this.lastPhase !== state.phase) {
+      const previousPhase = this.lastPhase;
       this.lastPhase = state.phase;
       this.showPhaseBanner(this.phaseLabel(state.phase));
       if (state.phase === "run-victory" || state.phase === "run-defeat") {
         winningAudio.playOutcome(state.phase === "run-victory");
-      } else {
+      } else if (this.shouldSpeakPhaseChange(previousPhase, state.phase)) {
         winningAudio.playPhaseChange(state.phase);
       }
     }
@@ -971,14 +972,25 @@ export class BattleScene extends Phaser.Scene {
       this.showActionBeat(beat, index * 180);
     });
 
-    const appliedStatuses = [
-      ...collectAppliedStatuses(before.enemyStatuses, battle.enemy.statuses),
-      ...collectAppliedStatuses(before.playerStatuses, battle.player.statuses),
-    ];
+    const enemyStatuses = collectAppliedStatuses(before.enemyStatuses, battle.enemy.statuses);
+    const playerStatuses = collectAppliedStatuses(before.playerStatuses, battle.player.statuses);
     const statusDelayBase = newBeats.length * 180 + 980;
-    appliedStatuses.forEach((statusId, index) => {
-      winningAudio.playStatusLine(statusId, statusDelayBase + index * 980);
+    enemyStatuses.forEach((statusId, index) => {
+      winningAudio.playStatusLine(statusId, "enemy", statusDelayBase + index * 980);
     });
+    playerStatuses.forEach((statusId, index) => {
+      winningAudio.playStatusLine(statusId, "player", statusDelayBase + (enemyStatuses.length + index) * 980);
+    });
+  }
+
+  private shouldSpeakPhaseChange(previousPhase: string, nextPhase: string): boolean {
+    if (nextPhase === "enemy-turn" || nextPhase === "response-window") {
+      return false;
+    }
+    if (previousPhase === "response-window" && nextPhase === "player-turn") {
+      return false;
+    }
+    return true;
   }
 
   private showActionBeat(beat: ActionBeat, delay: number): void {

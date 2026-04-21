@@ -1,4 +1,4 @@
-import type { ActionBeat, CardType, Phase, StatusId } from "../core/types";
+import type { ActionBeat, CardType, Phase, Side, StatusId } from "../core/types";
 import type { FeedTone } from "../data/showbiz";
 
 type TrackName = "title" | "battle";
@@ -13,6 +13,8 @@ type AudioState = AudioSettings & {
   available: boolean;
   unlocked: boolean;
 };
+
+type SpeechSpeaker = Side | "narrator";
 
 type PersistedAudioSettings = Partial<AudioSettings> & {
   version?: number;
@@ -401,7 +403,10 @@ class WinningAudioDirector {
     });
     const spoken = PHASE_LINES[phase];
     if (spoken) {
-      this.speak(spoken, 150, 1.02, 0.96);
+      this.speak(spoken, 150, 1.02, 0.96, false, {
+        speaker: "narrator",
+        minGapMs: 720,
+      });
     }
   }
 
@@ -433,10 +438,14 @@ class WinningAudioDirector {
       victory ? 1.08 : 0.92,
       victory ? 0.95 : 0.78,
       true,
+      {
+        speaker: "narrator",
+        minGapMs: 0,
+      },
     );
   }
 
-  playStatusLine(statusId: StatusId, delayMs = 0): void {
+  playStatusLine(statusId: StatusId, side: Side, delayMs = 0): void {
     const lines = STATUS_LINES[statusId];
     if (!lines || lines.length === 0) {
       return;
@@ -444,8 +453,19 @@ class WinningAudioDirector {
     this.speak(
       choose(lines),
       delayMs,
-      statusId === "speechless" ? 0.9 : 1.02,
-      statusId === "mainNarrative" || statusId === "lastWord" ? 0.92 : 1.02,
+      side === "enemy" ? 0.88 : 1.02,
+      side === "enemy"
+        ? statusId === "mainNarrative" || statusId === "lastWord"
+          ? 0.7
+          : 0.76
+        : statusId === "mainNarrative" || statusId === "lastWord"
+          ? 0.92
+          : 1.02,
+      false,
+      {
+        speaker: side,
+        minGapMs: 520,
+      },
     );
   }
 
@@ -454,7 +474,29 @@ class WinningAudioDirector {
       this.runLater(delayMs, () => this.playActionBeatNow(beat));
     }
     const extraDelay = beat.cardType === "Finisher" ? 80 : 150;
-    this.speak(this.voiceLineForBeat(beat), delayMs + extraDelay, beat.side === "player" ? 0.96 : 1.06, beat.mode === "response" ? 1.08 : 0.92, beat.cardType === "Finisher");
+    this.speak(
+      this.voiceLineForBeat(beat),
+      delayMs + extraDelay,
+      beat.side === "player"
+        ? beat.mode === "response"
+          ? 1.06
+          : 0.98
+        : beat.mode === "response"
+          ? 0.94
+          : 0.88,
+      beat.side === "player"
+        ? beat.mode === "response"
+          ? 1.14
+          : 1.02
+        : beat.mode === "response"
+          ? 0.82
+          : 0.76,
+      false,
+      {
+        speaker: beat.side,
+        minGapMs: 140,
+      },
+    );
   }
 
   private playActionBeatNow(beat: ActionBeat): void {
@@ -530,13 +572,18 @@ class WinningAudioDirector {
     rate: number,
     pitch: number,
     force = false,
+    options: {
+      speaker?: SpeechSpeaker;
+      minGapMs?: number;
+    } = {},
   ): void {
     if (!this.settings.voiceEnabled || !hasWindow() || !("speechSynthesis" in window)) {
       return;
     }
 
     const targetAt = performance.now() + delayMs;
-    if (!force && targetAt - this.lastVoiceTime < 900) {
+    const minGapMs = options.minGapMs ?? 900;
+    if (!force && targetAt - this.lastVoiceTime < minGapMs) {
       return;
     }
     this.lastVoiceTime = targetAt;
@@ -546,9 +593,6 @@ class WinningAudioDirector {
         return;
       }
       const synth = window.speechSynthesis;
-      if (!force && (synth.speaking || synth.pending)) {
-        return;
-      }
       if (force) {
         synth.cancel();
       }
@@ -557,14 +601,28 @@ class WinningAudioDirector {
       utterance.rate = clamp(rate, 0.72, 1.22);
       utterance.pitch = clamp(pitch, 0.68, 1.28);
       utterance.volume = 0.8;
-      const voice = synth
-        .getVoices()
-        .find((candidate) => candidate.lang.toLowerCase().startsWith("zh"));
+      const voice = this.selectVoice(synth, options.speaker ?? "narrator");
       if (voice) {
         utterance.voice = voice;
       }
       synth.speak(utterance);
     });
+  }
+
+  private selectVoice(
+    synth: SpeechSynthesis,
+    speaker: SpeechSpeaker,
+  ): SpeechSynthesisVoice | null {
+    const zhVoices = synth
+      .getVoices()
+      .filter((candidate) => candidate.lang.toLowerCase().startsWith("zh"));
+    if (zhVoices.length === 0) {
+      return null;
+    }
+    if (speaker === "enemy") {
+      return zhVoices[1] ?? zhVoices[zhVoices.length - 1] ?? zhVoices[0];
+    }
+    return zhVoices[0];
   }
 
   private loadSettings(): AudioSettings {
